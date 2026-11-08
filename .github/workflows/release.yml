@@ -173,6 +173,8 @@ jobs:
       - name: Release notes from CHANGELOG.md
         run: |
           awk -v v="$VERSION" 'index($0, "## [" v "]") == 1 { found = 1; next } found && /^## \[/ { exit } found' CHANGELOG.md > notes.md
+          # Links relative to the repository (docs/x.md) would point into the release page: make them absolute.
+          perl -pi -e 's{\]\((?!https?://|#|mailto:)([^)\s]+)\)}{](https://github.com/$ENV{GITHUB_REPOSITORY}/blob/$ENV{TAG}/$1)}g' notes.md
           printf '\n### Install\n\n```bash\ndocker pull ghcr.io/%s:%s\ndocker run --rm ghcr.io/%s:%s check https://your-shop.com\n```\n\nFull setup: [Quick start](https://github.com/%s#quick-start)\n' \
             "$GITHUB_REPOSITORY" "$VERSION" "$GITHUB_REPOSITORY" "$VERSION" "$GITHUB_REPOSITORY" >> notes.md
           cat notes.md

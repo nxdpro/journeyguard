@@ -10,7 +10,7 @@ Fewer false alarms, a Spanish translation and clearer firewall advice. Upgrading
 
 ### Added
 - **Spanish** for the guided setup, dashboard, reports, alerts and diagnosis (`language: es`, `--lang es`). Thanks to @masyarakatai ([#11](https://github.com/nxdpro/journeyguard/pull/11)).
-- **[Allow-listing guide](docs/firewalls.md)** with steps for Cloudflare, Wordfence, Sucuri and Imunify360. Thanks to @masyarakatai ([#10](https://github.com/nxdpro/journeyguard/pull/10)).
+- **[Allow-listing guide](https://github.com/nxdpro/journeyguard/blob/main/docs/firewalls.md)** with steps for Cloudflare, Wordfence, Sucuri and Imunify360. Thanks to @masyarakatai ([#10](https://github.com/nxdpro/journeyguard/pull/10)).
 - `run --due` for running from cron; a `.env` file next to the config is read automatically; `--lang` for `demo` and `init`.
 - A journey that stays *not tested* for a day sends one alert, so a firewall or CAPTCHA cannot hide a real problem for long.
 
