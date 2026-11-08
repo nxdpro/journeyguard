@@ -87,4 +87,4 @@ POSTs JSON to any URL, for n8n, Make, Zapier, PagerDuty bridges or your own syst
 
 `event` is `failure`, `recovery`, `test`, `untested` (a journey has been *not tested* for a day), `monitor` (JourneyGuard itself cannot run checks) or `monitor-recovered`. Webhooks are not signed: put a secret in the URL (`url: https://hooks.example.com/journeyguard?token=${WEBHOOK_TOKEN}`) and check it on the receiving side.
 
-Set `language: el` to receive alerts in Greek, and `dashboard.publicUrl` to include a link to the dashboard.
+Set `language: el` for Greek or `language: es` for Spanish alerts, and `dashboard.publicUrl` to include a link to the dashboard.

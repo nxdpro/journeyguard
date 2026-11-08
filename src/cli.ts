@@ -16,7 +16,7 @@ import { startDemoShop, BREAK_MODES, type BreakMode } from './demo/shop.js';
 import { Store } from './store.js';
 import { infoList } from './render.js';
 import { localizeError, localizeReason, t } from './i18n.js';
-import type { Config, RunResult } from './types.js';
+import type { Config, Language, RunResult } from './types.js';
 import { formatDuration, siteBase, slugify } from './util.js';
 import { VERSION } from './version.js';
 
@@ -53,7 +53,7 @@ ${bold('Options')}
   --headed              Show the browser window
   --port <n>            Dashboard port (start/serve/demo)
   --host <addr>         Dashboard host (start/serve/demo)
-  --lang <en|el>        Language of the results, the demo and the guided setup (check: el for .gr/.cy sites by default)
+  --lang <en|el|es>     Language of the results, the demo and the guided setup (check: el for .gr/.cy sites by default)
   --send-test-message   check: really send the contact form (by default it is only filled in)
   --allow-no-password   Allow serving the dashboard on a public address without a password
   --break <mode>        Demo failure: ${BREAK_MODES.filter((m) => m !== 'none').join(', ')}
@@ -62,9 +62,9 @@ ${bold('Options')}
   -v, --version         Show version
 `;
 
-type Lang = 'en' | 'el';
+type Lang = Language;
 
-/** Terminal wording in English and Greek (Greek capitals take no accents). */
+/** Terminal wording in every supported language (Greek capitals take no accents). */
 const SAY = {
   en: {
     passed: 'PASSED',
@@ -114,7 +114,64 @@ const SAY = {
     safeModeOff: 'Η ασφαλής λειτουργία είναι ΑΠΕΝΕΡΓΟΠΟΙΗΜΕΝΗ: οι διαδρομές μπορεί να κάνουν πραγματικές παραγγελίες και πληρωμές.',
     inconclusive: (n: number) => (n === 1 ? '1 διαδρομή δεν ελέγχθηκε πλήρως (δείτε τις προειδοποιήσεις παραπάνω)' : `${n} διαδρομές δεν ελέγχθηκαν πλήρως (δείτε τις προειδοποιήσεις παραπάνω)`),
   },
+  es: {
+    passed: 'CORRECTO',
+    failed: 'FALLIDO',
+    warning: 'ADVERTENCIA',
+    attempts: (n: number) => `${n} intentos`,
+    notTested: 'no comprobado',
+    screenshot: 'Captura:',
+    reportWritten: 'Informe guardado en',
+    journeys: (n: number) => (n === 1 ? '1 recorrido' : `${n} recorridos`),
+    unchecked: (n: number) => (n === 1 ? 'No se pudo comprobar 1 recorrido' : `No se pudieron comprobar ${n} recorridos`),
+    failing: (n: number) => (n === 1 ? '1 recorrido falla' : `${n} recorridos fallan`),
+    allWorking: 'Todos los recorridos comprobados funcionan',
+    nothingChecked: 'No se comprobó nada',
+    checked: (n: number) => `comprobados: ${n}`,
+    sent: (title: string) => `enviado «${title}»`,
+    checking: 'comprobando',
+    contactAt: (p: string) => `formulario de contacto en ${p}`,
+    formNotSent: 'El formulario de contacto se rellena pero no se envía; añade --send-test-message para enviar un mensaje de prueba real.',
+    reportHint: 'Para capturas y un informe que puedas enviar, añade --report report.html',
+    unreachable: (url: string, why: string) => `No se pudo abrir ${url}: ${why}. Comprueba la dirección y que el sitio esté en línea.`,
+    nothingDue: 'Aún no toca ninguna comprobación: todos los recorridos se comprobaron dentro de su intervalo.',
+    safeModeOff: 'El modo seguro está DESACTIVADO: los recorridos pueden realizar pedidos y pagos reales.',
+    inconclusive: (n: number) => (n === 1 ? '1 recorrido no se pudo comprobar del todo (mira las advertencias de arriba)' : `${n} recorridos no se pudieron comprobar del todo (mira las advertencias de arriba)`),
+  },
 } satisfies Record<Lang, unknown>;
+
+/** The demo's narration. CI reads the English lines, so keep their wording. */
+const DEMO_SAY: Record<Lang, { running: string; healthy: string; broken: (mode: string) => string; dashboard: string; stop: string; toggle: string }> = {
+  en: {
+    running: 'demo shop running at',
+    healthy: '1) The shop is healthy:',
+    broken: (mode) => `2) Now we break it (--break ${mode}) — this is what an owner normally never notices:`,
+    dashboard: 'Dashboard:',
+    stop: '(Ctrl+C to stop)',
+    toggle: 'Toggle failures live',
+  },
+  el: {
+    running: 'το δοκιμαστικό eShop τρέχει στο',
+    healthy: '1) Το eShop λειτουργεί κανονικά:',
+    broken: (mode) => `2) Τώρα το «σπάμε» (--break ${mode}): αυτό συνήθως δεν το προσέχει κανείς:`,
+    dashboard: 'Πίνακας ελέγχου:',
+    stop: '(Ctrl+C για τερματισμό)',
+    toggle: 'Αλλάξτε τη βλάβη ζωντανά',
+  },
+  es: {
+    running: 'la tienda de demostración funciona en',
+    healthy: '1) La tienda funciona bien:',
+    broken: (mode) => `2) Ahora la rompemos (--break ${mode}): esto es lo que normalmente nadie nota:`,
+    dashboard: 'Panel:',
+    stop: '(Ctrl+C para salir)',
+    toggle: 'Cambia el fallo en directo',
+  },
+};
+
+/** A --lang value, if it names a supported language. */
+function langOption(value: unknown): Lang | undefined {
+  return value === 'en' || value === 'el' || value === 'es' ? value : undefined;
+}
 
 
 function printRun(run: RunResult, dataDir?: string, lang: Lang = 'en'): void {
@@ -274,7 +331,7 @@ async function cmdCheck(url: string | undefined, values: Record<string, string |
   }
   const json = !!values.json;
   const target = /^https?:\/\//i.test(url) ? url : `https://${url}`;
-  const guess: Lang = values.lang === 'el' || values.lang === 'en' ? values.lang : /\.(gr|cy)(?:[:/]|$)/i.test(target) ? 'el' : 'en';
+  const guess: Lang = langOption(values.lang) ?? (/\.(gr|cy)(?:[:/]|$)/i.test(target) ? 'el' : 'en');
   let d: Awaited<ReturnType<typeof detect>>;
   try {
     d = await detect(target);
@@ -285,7 +342,7 @@ async function cmdCheck(url: string | undefined, values: Record<string, string |
   const home = new URL(d.url);
   // Keep the folder the user typed (a shop in /eshop/), but not one a redirect added (/el/, /en/).
   const siteUrl = siteBase(target, d.url);
-  const lang: Lang = values.lang === 'el' || values.lang === 'en' ? values.lang : /\.(gr|cy)$/i.test(home.hostname) ? 'el' : 'en';
+  const lang: Lang = langOption(values.lang) ?? (/\.(gr|cy)$/i.test(home.hostname) ? 'el' : 'en');
   const say = SAY[lang];
   const send = !!values['send-test-message'];
   const journeys = d.journeys.map((j) => (j.preset === 'contact-form' ? { ...j, options: { ...(j.options ?? {}), submit: send } } : j));
@@ -347,7 +404,7 @@ async function cmdInit(url: string | undefined, values: Record<string, string | 
       configFile: file,
       url,
       interactive,
-      language: values.lang === 'el' || values.lang === 'en' ? values.lang : undefined,
+      language: langOption(values.lang),
       // Without a terminal (CI, docker without -it) use defaults and just report what was written.
       prompter: interactive ? undefined : { ask: async (_q, fallback) => fallback ?? '', say: (m) => console.log(m), close: () => undefined },
     });
@@ -414,7 +471,7 @@ async function cmdDemo(values: Record<string, string | boolean | undefined>): Pr
       interval: '1h',
       timeout: '10s',
       retries: 0,
-      language: values.lang === 'el' ? 'el' : 'en',
+      language: langOption(values.lang) ?? 'en',
       browser: { headless: !values.headed },
       dashboard: { ...DEFAULT_SETTINGS.dashboard, port: Number(values.port ?? 8080) },
     },
@@ -429,11 +486,11 @@ async function cmdDemo(values: Record<string, string | boolean | undefined>): Pr
   const sites = resolveSites(config);
   const engine = new Engine(config, sites, { onResult: (run) => printRun(run, dataDir, config.settings.language) }, { save: true, alert: false });
 
-  const el = config.settings.language === 'el';
-  console.log(`${bold('JourneyGuard demo')} · ${el ? 'το δοκιμαστικό eShop τρέχει στο' : 'demo shop running at'} ${cyan(shop.url)}\n`);
-  console.log(bold(el ? '1) Το eShop λειτουργεί κανονικά:' : '1) The shop is healthy:'));
+  const demo = DEMO_SAY[config.settings.language];
+  console.log(`${bold('JourneyGuard demo')} · ${demo.running} ${cyan(shop.url)}\n`);
+  console.log(bold(demo.healthy));
   await engine.runAll();
-  console.log(`\n${bold(el ? `2) Τώρα το «σπάμε» (--break ${mode}): αυτό συνήθως δεν το προσέχει κανείς:` : `2) Now we break it (--break ${mode}) — this is what an owner normally never notices:`)}`);
+  console.log(`\n${bold(demo.broken(mode))}`);
   shop.setMode(mode);
   await engine.runAll();
 
@@ -441,8 +498,8 @@ async function cmdDemo(values: Record<string, string | boolean | undefined>): Pr
   // The demo only shows fake data, so it may listen on all interfaces (needed inside Docker).
   const demoHost = (values.host as string | undefined) ?? '127.0.0.1';
   const port = await listen(server, demoHost, config.settings.dashboard.port).catch(() => listen(server, demoHost, 0));
-  console.log(`\n${bold(el ? 'Πίνακας ελέγχου:' : 'Dashboard:')} ${cyan(`http://localhost:${port}`)}   ${dim(el ? '(Ctrl+C για τερματισμό)' : '(Ctrl+C to stop)')}`);
-  console.log(dim(`${el ? 'Αλλάξτε τη βλάβη ζωντανά' : 'Toggle failures live'}: ${shop.url}/__demo/break?mode=none|${BREAK_MODES.filter((m) => m !== 'none').join('|')}`));
+  console.log(`\n${bold(demo.dashboard)} ${cyan(`http://localhost:${port}`)}   ${dim(demo.stop)}`);
+  console.log(dim(`${demo.toggle}: ${shop.url}/__demo/break?mode=none|${BREAK_MODES.filter((m) => m !== 'none').join('|')}`));
   const stop = async () => {
     server.close();
     await shop.close();

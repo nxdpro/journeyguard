@@ -95,6 +95,38 @@ const T = {
     nextNode: 'Με Node.js:  journeyguard run   (ένας έλεγχος τώρα)   ·   journeyguard start   (συνεχής παρακολούθηση)',
     hello: 'Το JourneyGuard συνδέθηκε ✅ Εδώ θα λαμβάνετε μήνυμα όταν μια διαδρομή χαλάσει ή διορθωθεί.',
   },
+  es: {
+    welcome: `Configuración de JourneyGuard ${VERSION}. Pulsa Enter para aceptar el valor entre [corchetes].`,
+    url: 'Dirección del sitio web (por ejemplo, https://mi-tienda.com)',
+    badUrl: 'Eso no parece una dirección web. Inténtalo de nuevo, por ejemplo, https://mi-tienda.com',
+    detecting: 'Analizando el sitio…',
+    detected: (p: string, j: string) => `Encontrado: ${p}. Comprobaré: ${j}.`,
+    notReached: (e: string) => `No se pudo abrir el sitio (${e}). Configuraré una comprobación básica del sitio web; puedes añadir más después.`,
+    alerts: '¿Dónde deben llegar las alertas?\n  1) Telegram   2) Discord   3) Email   4) Slack   5) En ningún sitio por ahora\nElige',
+    tgHelp: 'En Telegram, abre @BotFather, envía /newbot, sigue los pasos y copia el token que te dé.',
+    tgToken: 'Token del bot',
+    tgBad: (e: string) => `Telegram no aceptó ese token (${e}). Inténtalo de nuevo o pulsa Enter para omitir las alertas.`,
+    tgBot: (n: string) => `Conectado a @${n}.`,
+    tgSendNow: (n: string) => `Ahora abre @${n} en Telegram (o añádelo a un grupo), envíale cualquier mensaje y pulsa Enter`,
+    tgChat: (c: string) => `Chat encontrado: ${c}`,
+    tgNoChat: 'Aún no se encontró ningún mensaje. Pega el ID del chat manualmente (o pulsa Enter para volver a intentarlo)',
+    testSent: 'Mensaje de prueba enviado. Comprueba que haya llegado.',
+    testFailed: (e: string) => `El mensaje de prueba falló (${e}). Puedes corregir el valor en .env y ejecutar "journeyguard test-alerts".`,
+    dcHelp: 'En Discord: ajustes del canal › Integraciones › Webhooks › Nuevo webhook › Copiar URL del webhook.',
+    dcUrl: 'URL del webhook de Discord',
+    slHelp: 'Crea un webhook entrante en https://api.slack.com/messaging/webhooks y copia su URL.',
+    slUrl: 'URL del webhook de Slack',
+    smtp: 'Servidor SMTP como URL, por ejemplo, smtps://usuario:contraseña@smtp.example.com:465',
+    mailTo: 'Enviar alertas a (dirección de email)',
+    mailFrom: 'Enviar alertas desde (dirección de email)',
+    written: (f: string) => `Guardado ${f}`,
+    keptEnv: (k: string) => `Se conservó el ${k} existente en .env`,
+    password: (p: string) => `Contraseña del dashboard: ${p}  (cualquier usuario; guardada en .env)`,
+    hello: 'JourneyGuard está conectado ✅ Recibirás un mensaje aquí cuando un recorrido falle o se recupere.',
+    next: 'Siguientes pasos:',
+    nextDocker: 'Con Docker:   docker compose up -d   y abre http://<servidor>:8080',
+    nextNode: 'Con Node.js:  journeyguard run   (una comprobación ahora)   ·   journeyguard start   (sigue comprobando)',
+  },
 };
 
 type Fetch = typeof fetch;
@@ -275,8 +307,8 @@ export async function runSetup(opts: SetupOptions): Promise<SetupResult> {
   try {
     let lang: Language = opts.language ?? 'en';
     if (p && opts.interactive && !opts.language) {
-      const l = (await p.ask('Language / Γλώσσα: 1) English  2) Ελληνικά', '1')).trim();
-      lang = l === '2' || /^el|^gr|ελλ/i.test(l) ? 'el' : 'en';
+      const l = (await p.ask('Language / Γλώσσα / Idioma: 1) English  2) Ελληνικά  3) Español', '1')).trim();
+      lang = l === '2' || /^el|^gr|ελλ/i.test(l) ? 'el' : l === '3' || /^es|^spa|^cast/i.test(l) ? 'es' : 'en';
     }
     const t = T[lang];
     if (p && opts.interactive) p.say(t.welcome);

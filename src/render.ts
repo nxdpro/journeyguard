@@ -27,19 +27,19 @@ export interface RenderOptions {
   runButton?: boolean;
 }
 
-const INFO_LABELS: Record<string, [string, string, (v: string | number | boolean) => string]> = {
-  homepageLoadMs: ['Homepage load', 'Φόρτωση αρχικής', (v) => formatDuration(Number(v))],
-  product: ['Product', 'Προϊόν', String],
-  cartItems: ['Items in cart', 'Τεμάχια στο καλάθι', String],
-  paymentMethods: ['Payment methods', 'Τρόποι πληρωμής', String],
-  gateways: ['Payment providers', 'Πάροχοι πληρωμών', String],
-  form: ['Form', 'Φόρμα', String],
-  fieldsFilled: ['Form fields filled', 'Συμπληρωμένα πεδία', String],
-  sslDaysLeft: ['SSL expires in (days)', 'Λήξη SSL σε (ημέρες)', String],
-  sslIssuer: ['SSL issuer', 'Εκδότης SSL', String],
-  flaky: ['Passed on retry', 'Πέρασε στη 2η προσπάθεια', () => '✓'],
-  variationSelected: ['Product options chosen', 'Επιλογές προϊόντος', () => '✓'],
-  freeOrder: ['Free order (no payment step)', 'Δωρεάν παραγγελία (χωρίς πληρωμή)', () => '✓'],
+const INFO_LABELS: Record<string, [string, string, string, (v: string | number | boolean) => string]> = {
+  homepageLoadMs: ['Homepage load', 'Φόρτωση αρχικής', 'Carga de la página de inicio', (v) => formatDuration(Number(v))],
+  product: ['Product', 'Προϊόν', 'Producto', String],
+  cartItems: ['Items in cart', 'Τεμάχια στο καλάθι', 'Artículos en el carrito', String],
+  paymentMethods: ['Payment methods', 'Τρόποι πληρωμής', 'Métodos de pago', String],
+  gateways: ['Payment providers', 'Πάροχοι πληρωμών', 'Proveedores de pago', String],
+  form: ['Form', 'Φόρμα', 'Formulario', String],
+  fieldsFilled: ['Form fields filled', 'Συμπληρωμένα πεδία', 'Campos del formulario rellenados', String],
+  sslDaysLeft: ['SSL expires in (days)', 'Λήξη SSL σε (ημέρες)', 'El SSL caduca en (días)', String],
+  sslIssuer: ['SSL issuer', 'Εκδότης SSL', 'Emisor del SSL', String],
+  flaky: ['Passed on retry', 'Πέρασε στη 2η προσπάθεια', 'Superado al reintentar', () => '✓'],
+  variationSelected: ['Product options chosen', 'Επιλογές προϊόντος', 'Opciones de producto elegidas', () => '✓'],
+  freeOrder: ['Free order (no payment step)', 'Δωρεάν παραγγελία (χωρίς πληρωμή)', 'Pedido gratuito (sin paso de pago)', () => '✓'],
 };
 
 /** Human-readable observations, hiding internal values such as URLs used between stages. */
@@ -48,7 +48,7 @@ export function infoList(info: Record<string, string | number | boolean>, lang: 
     .filter(([k]) => !['productUrl', 'cartUrl'].includes(k))
     .map(([k, v]) => {
       const label = INFO_LABELS[k];
-      return label ? [label[lang === 'el' ? 1 : 0], label[2](v)] : [k, String(v)];
+      return label ? [label[lang === 'el' ? 1 : lang === 'es' ? 2 : 0], label[3](v)] : [k, String(v)];
     });
 }
 
@@ -59,15 +59,15 @@ function pill(status: StageStatus | 'none', lang: Language): string {
 
 /** A date and time as people in that language write it. */
 function when(iso: string, lang: Language): string {
-  return new Date(iso).toLocaleString(lang === 'el' ? 'el-GR' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+  return new Date(iso).toLocaleString(lang === 'el' ? 'el-GR' : lang === 'es' ? 'es-ES' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 function timeAgo(iso: string, lang: Language): string {
   const s = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
   if (s < 5) return t(lang, 'justNow');
   const [n, unit] =
-    s < 60 ? [s, lang === 'el' ? 'δευτ.' : 's'] : s < 3600 ? [Math.round(s / 60), lang === 'el' ? 'λεπ.' : 'm'] : s < 86_400 ? [Math.round(s / 3600), lang === 'el' ? 'ώρ.' : 'h'] : [Math.round(s / 86_400), lang === 'el' ? 'ημ.' : 'd'];
-  return lang === 'el' ? `πριν ${n} ${unit}` : `${n}${unit} ago`;
+    s < 60 ? [s, lang === 'el' ? 'δευτ.' : lang === 'es' ? 's' : 's'] : s < 3600 ? [Math.round(s / 60), lang === 'el' ? 'λεπ.' : lang === 'es' ? 'min' : 'm'] : s < 86_400 ? [Math.round(s / 3600), lang === 'el' ? 'ώρ.' : lang === 'es' ? 'h' : 'h'] : [Math.round(s / 86_400), lang === 'el' ? 'ημ.' : lang === 'es' ? 'd' : 'd'];
+  return lang === 'el' ? `πριν ${n} ${unit}` : lang === 'es' ? `hace ${n} ${unit}` : `${n}${unit} ago`;
 }
 
 function renderEvidence(run: RunResult, opts: RenderOptions): string {
@@ -151,8 +151,8 @@ export function renderSites(views: JourneyView[], opts: RenderOptions): string {
 
 export function summaryPills(views: JourneyView[], lang: Language): string {
   const count = (s: string) => views.filter((v) => (v.latest?.status ?? 'none') === s).length;
-  // Greek reads «Αποτυχία: 2» (a count after a singular noun would not agree); English reads "2 Failed".
-  const pillText = (s: 'failed' | 'warning' | 'passed') => (lang === 'el' ? `${statusLabel(lang, s)}: ${count(s)}` : `${count(s)} ${statusLabel(lang, s)}`);
+  // Greek and Spanish read «Αποτυχία: 2» / «Fallido: 2» (a count before a singular noun would not agree); English reads "2 Failed".
+  const pillText = (s: 'failed' | 'warning' | 'passed') => (lang === 'en' ? `${count(s)} ${statusLabel(lang, s)}` : `${statusLabel(lang, s)}: ${count(s)}`);
   return [
     count('failed') ? `<span class="pill s-failed">${h(pillText('failed'))}</span>` : '',
     count('warning') ? `<span class="pill s-warning">${h(pillText('warning'))}</span>` : '',

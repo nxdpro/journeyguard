@@ -9,6 +9,7 @@ import { isDangerousTarget, normalizeLabel, orderRequestReason, type ClickTarget
 import { detectFromHtml, findContactPath, hasContactForm, suggestJourneys } from '../src/detect.js';
 import { errorPageLabel } from '../src/presets/common.js';
 import { localizeError } from '../src/i18n.js';
+import { label } from '../src/presets/options.js';
 import { transition } from '../src/alerts/index.js';
 import { buildMessage } from '../src/alerts/message.js';
 import { diagnose } from '../src/diagnose.js';
@@ -332,4 +333,32 @@ test('a shop installed in a folder is checked inside that folder', () => {
 test('a stray percent sign in a link does not stop detection', () => {
   assert.equal(findContactPath('<a href="/offers/up-to-50%-off/">Offers</a><a href="/contact/">Contact</a>', 'https://x.gr/'), '/contact/');
   assert.equal(hasContactForm('<form class="mc4wp-form"><input type="text" name="FNAME"><input type="email" name="EMAIL"></form>'), false);
+});
+
+test('Spanish translates diagnosis, dashboard labels and common step errors', () => {
+  const es = diagnose(fakeRun(), 'es');
+  assert.match(es[0]!.title, /PHP\/WordPress|fatal/i);
+  assert.match(es[0]!.detail, /plugin|tema/i);
+  assert.equal(label('es', 'checkout'), 'Proceso de compra');
+  assert.equal(localizeError('HTTP 500 on https://shop.es/checkout/', 'es'), 'HTTP 500 en la página https://shop.es/checkout/');
+  assert.equal(localizeError('Something new', 'es'), 'Something new');
+  const alert = buildMessage(Object.assign(fakeRun(), { hints: es }), 'failure', 'es');
+  assert.match(alert.title, /ha fallado/);
+  assert.match(alert.text, /Causa probable/);
+});
+
+test('firewall advice in every language points to the IP address or a secret header, never the public header alone', () => {
+  const blocked = 'Cloudflare blocked the monitor (HTTP 403) on https://shop.example/. Allow-list the IP address of the server JourneyGuard runs on.';
+  for (const lang of ['el', 'es'] as const) {
+    const text = localizeError(blocked, lang);
+    assert.notEqual(text, blocked, lang);
+    assert.match(text, /IP/, lang);
+  }
+  const run = fakeRun({ stages: [{ name: 'Website', status: 'not_tested', durationMs: 10, steps: [], reason: blocked }], failedStage: undefined });
+  for (const lang of ['en', 'el', 'es'] as const) {
+    const hint = diagnose(run, lang).find((h) => h.id === 'bot-protection');
+    assert.ok(hint, lang);
+    assert.match(hint.detail, /IP/, lang);
+    assert.match(hint.detail, /headers/, lang);
+  }
 });
