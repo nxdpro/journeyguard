@@ -2,9 +2,19 @@
 
 If a firewall or bot-protection product challenges JourneyGuard, the affected
 journey is reported as **not tested**, not as a customer outage. Allow-list
-only the monitor, and test the rule with one manual run
-(`journeyguard run`, or `journeyguard check https://your-site`). Keep the
-firewall enabled for everyone else.
+only the monitor and keep the firewall enabled for everyone else. Then test
+the rule with one manual run of the site's journeys on the monitoring server:
+
+```bash
+journeyguard run --site "My Shop" --no-alerts
+# with Docker Compose:
+docker compose run --rm journeyguard run --site "My Shop" --no-alerts
+```
+
+If the site has a contact-form journey, this run also sends its test message.
+`journeyguard check` is not a good test for these rules: it does not read
+`journeyguard.yml`, so it never sends your secret header, and it passes an IP
+rule only when it runs on the monitoring server itself.
 
 Before creating a rule, find the **public egress IP** of the machine running
 JourneyGuard. This is the address the site sees, not necessarily the VPS's
@@ -13,31 +23,36 @@ use the final egress address (and keep it stable if possible).
 
 ## Cloudflare
 
-Cloudflare supports a narrow WAF custom rule matching a request header. The
-default marker is `X-JourneyGuard: 1`, but that value is public and can be
-spoofed. A random secret header value is safer when the rule skips security
-products.
+Cloudflare supports a narrow WAF custom rule matching a request header. Every
+request to your site carries the marker `X-JourneyGuard: 1`, but that value is
+public and anyone can send it. Leave the marker as it is (it helps you filter
+the monitor out of analytics) and add a separate header with a long random
+secret for this site, then match the rule on that.
 
-1. Put a long random value in the environment of the JourneyGuard process:
+1. Add the header to the site in `journeyguard.yml` and keep its value in
+   `.env` (for example the output of `openssl rand -hex 24`):
 
    ```yaml
-   settings:
-     headers:
-       X-JourneyGuard: ${JOURNEYGUARD_HEADER}
+   sites:
+     - name: My Shop
+       url: https://shop.example.com
+       headers:
+         X-Monitor-Token: ${SHOP_MONITOR_TOKEN}
    ```
 
    ```dotenv
-   JOURNEYGUARD_HEADER=replace-with-a-long-random-value
+   SHOP_MONITOR_TOKEN=replace-with-a-long-random-value
    ```
 
-   Do not commit the value. The header is sent to the monitored site only; it
-   is not sent to third-party resources loaded by the page.
+   Do not commit the value. The header is sent only to this site (and its
+   `www.` variant), never to other sites in the file or to third-party
+   resources loaded by the page.
 2. In the Cloudflare dashboard, open **Security rules**, choose **Create
    rule** > **Custom rules**, and create an expression like this (use your
    actual secret):
 
    ```text
-   http.request.headers["x-journeyguard"][0] eq "replace-with-a-long-random-value"
+   http.request.headers["x-monitor-token"][0] eq "replace-with-a-long-random-value"
    ```
 3. Choose **Skip** as the action. Select only the products that are blocking
    the monitor, such as the relevant Managed Rules or rate-limiting rule, then
@@ -97,7 +112,7 @@ Use an IP rule as the primary exception. A user-agent allow rule may be
 available in a hosting panel or an upstream WAF, but it is not a substitute
 for an IP restriction and can be spoofed. Do not disable Imunify360 Firewall,
 Proactive Defense or malware protection globally just to make a monitor pass.
-If the IP changes, update the allow list and rerun the check. See the
+If the IP changes, update the allow list and run the journeys again. See the
 [Imunify360 product documentation](https://docs.imunify360.com/) for the
 current panel and CLI references.
 
@@ -106,7 +121,7 @@ current panel and CLI references.
 | Signal | Strength | Tradeoff |
 |---|---|---|
 | Monitor public IP | Strongest and simplest | Requires a stable egress IP; shared NAT can be too broad |
-| Secret `X-JourneyGuard` value | Narrow and works when IPs change | Must stay secret; a leaked value can be replayed |
+| Secret per-site header (`X-Monitor-Token`) | Narrow and works when IPs change | Must stay secret; a leaked value can be replayed |
 | JourneyGuard user agent | Easy to identify in logs | Public and spoofable; not supported as a bypass by every firewall |
 | Default `X-JourneyGuard: 1` | No configuration needed | Public and should not be used to skip broad security controls |
 

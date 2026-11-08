@@ -152,7 +152,7 @@ docker compose up -d --force-recreate     # systemd: sudo systemctl restart jour
 - **"the environment variable X is not set":** add `X` to `.env` next to `journeyguard.yml`, then restart.
 - **"Chromium is not installed" or missing libraries** (Node.js only): run the `playwright install --with-deps` line again from the app folder.
 - **A journey shows *not tested* behind a firewall:** see [Allow-listing JourneyGuard](firewalls.md) for Cloudflare, Wordfence, Sucuri and Imunify360.
-- **A false alarm:** run `journeyguard check https://your-site` to see the same journeys with details, then [report it](https://github.com/nxdpro/journeyguard/issues/new/choose). False alarms are the bugs we fix first.
+- **A false alarm:** run the site's journeys once with details, `journeyguard run --site "My Shop" --no-alerts` (with Docker Compose: `docker compose run --rm journeyguard run --site "My Shop" --no-alerts`; if the site has a contact-form journey, this also sends its test message), then [report it](https://github.com/nxdpro/journeyguard/issues/new/choose). `check` is not the same test: it runs only the presets it detects, without your options, custom journeys or headers. False alarms are the bugs we fix first.
 
 ## Backups
 

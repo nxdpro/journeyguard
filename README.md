@@ -53,7 +53,7 @@ JourneyGuard complements an uptime monitor such as [Uptime Kuma](https://github.
 docker run --rm ghcr.io/nxdpro/journeyguard check https://your-shop.com
 ```
 
-JourneyGuard detects the platform (WooCommerce, Shopify, WordPress), then walks through the journeys that fit: homepage and SSL, product → cart → checkout → payment methods, and the contact form. Nothing is bought and no message is sent: the contact form is filled in but not submitted. Results appear in the terminal, in Greek for `.gr` and `.cy` sites (`--lang en|el` to choose). For a report with screenshots that you can send to someone, save it into the current folder:
+JourneyGuard detects the platform (WooCommerce, Shopify, WordPress), then walks through the journeys that fit: homepage and SSL, product → cart → checkout → payment methods, and the contact form. Nothing is bought and no message is sent: the contact form is filled in but not submitted. Results appear in the terminal, in Greek for `.gr` and `.cy` sites (`--lang en|el|es` to choose). For a report with screenshots that you can send to someone, save it into the current folder:
 
 ```bash
 docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/out" \

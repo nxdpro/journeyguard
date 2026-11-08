@@ -7,7 +7,7 @@ Thanks for helping small businesses catch broken checkouts and forms before thei
 - **Report a false alarm or a missed failure.** These are the most valuable issues. Include the platform, the preset, the dashboard error and, if you can, the screenshot.
 - **Request or build a preset** for a platform (PrestaShop, OpenCart, Magento, Wix, Squarespace, booking systems…).
 - **Add diagnosis rules.** If you know what a symptom usually means, add it to [`src/diagnose.ts`](src/diagnose.ts) in English, Greek and the supported translations.
-- **Translate** JourneyGuard into another language: the strings in [`src/i18n.ts`](src/i18n.ts), [`src/diagnose.ts`](src/diagnose.ts), [`src/presets/options.ts`](src/presets/options.ts), [`src/setup.ts`](src/setup.ts) and the terminal wording in [`src/cli.ts`](src/cli.ts), plus the language code in `src/types.ts` (`Language`) and `src/config.ts`. One language per pull request.
+- **Translate** JourneyGuard into another language: the strings in [`src/i18n.ts`](src/i18n.ts), [`src/diagnose.ts`](src/diagnose.ts), [`src/presets/options.ts`](src/presets/options.ts), [`src/setup.ts`](src/setup.ts) and the terminal wording in [`src/cli.ts`](src/cli.ts); the dashboard labels, dates and browser locale in [`src/render.ts`](src/render.ts), [`src/report.ts`](src/report.ts) and [`src/runner.ts`](src/runner.ts); plus the language code in `src/types.ts` (`Language`) and `src/config.ts`. The build fails until `i18n.ts`, `diagnose.ts`, `setup.ts` and `cli.ts` have every message; elsewhere a missing translation quietly shows English, so search the code for `'es'` and add your language next to each Spanish branch. One language per pull request.
 - **Improve the docs**, especially setup guides for specific hosts and firewalls.
 
 ## Development
@@ -27,7 +27,7 @@ The code is TypeScript (ES modules, Node 22+). Useful places:
 | `src/presets/` | Preset journeys (`website`, `woocommerce`, `shopify`, `contact-form`) |
 | `src/steps.ts` | YAML step actions |
 | `src/runner.ts` | Browser session, evidence capture, retries |
-| `src/diagnose.ts` | Plain-language hints (EN/EL) |
+| `src/diagnose.ts` | Plain-language hints (EN/EL/ES) |
 | `src/alerts/` | Telegram, Discord, Slack, email, webhook |
 | `src/demo/shop.ts` | Demo shop with break modes, used by tests and `journeyguard demo` |
 | `test/` | `node:test` suites |
