@@ -22,7 +22,7 @@ JourneyGuard walks through your shop and forms like a real customer and tells yo
 
 </div>
 
-> **Status: early release (v0.1).** 64 automated tests, including 14 simulated breakages and false-alarm traps on a bundled demo shop, plus checks on our own production sites. False alarms are the bugs we care about most: please [report them](https://github.com/nxdpro/journeyguard/issues/new/choose).
+> **Status: early release (v0.1).** 65 automated tests, including 14 simulated breakages and false-alarm traps on a bundled demo shop, plus checks on our own production sites. False alarms are the bugs we care about most: please [report them](https://github.com/nxdpro/journeyguard/issues/new/choose).
 
 ## Why
 

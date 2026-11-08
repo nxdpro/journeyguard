@@ -347,6 +347,25 @@ test('Spanish translates diagnosis, dashboard labels and common step errors', ()
   assert.match(alert.text, /Causa probable/);
 });
 
+test('every language translates every message and every common error', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const src = await readFile(new URL('../../src/i18n.ts', import.meta.url), 'utf8');
+  const keys = (lang: string) => {
+    const start = src.indexOf(`  ${lang}: {`);
+    return [...src.slice(start, src.indexOf('\n  },', start)).matchAll(/^    (\w+):/gm)].map((m) => m[1]);
+  };
+  const patterns = (table: string) => {
+    const start = src.indexOf(`const ${table}`);
+    return [...src.slice(start, src.indexOf('\n];', start)).matchAll(/^  \[(\/.*?\/[a-z]*),/gm)].map((m) => m[1]);
+  };
+  const english = keys('en');
+  assert.ok(english.length > 30);
+  for (const lang of ['el', 'es']) assert.deepEqual(keys(lang).sort(), [...english].sort(), lang);
+  const greek = patterns('GREEK_ERRORS');
+  assert.ok(greek.length > 30);
+  assert.deepEqual(patterns('SPANISH_ERRORS').sort(), [...greek].sort());
+});
+
 test('firewall advice in every language points to the IP address or a secret header, never the public header alone', () => {
   const blocked = 'Cloudflare blocked the monitor (HTTP 403) on https://shop.example/. Allow-list the IP address of the server JourneyGuard runs on.';
   for (const lang of ['el', 'es'] as const) {
