@@ -42,6 +42,8 @@ Channel settings → Integrations → Webhooks → New webhook → copy URL.
   webhookUrl: ${DISCORD_WEBHOOK_URL}
 ```
 
+The failure screenshot is attached to the message.
+
 ## Slack
 
 Create an [incoming webhook](https://api.slack.com/messaging/webhooks).
@@ -85,6 +87,6 @@ POSTs JSON to any URL, for n8n, Make, Zapier, PagerDuty bridges or your own syst
   url: https://hooks.example.com/journeyguard
 ```
 
-`event` is `failure`, `recovery`, `test`, `untested` (a journey has been *not tested* for a day), `monitor` (JourneyGuard itself cannot run checks) or `monitor-recovered`. Webhooks are not signed: put a secret in the URL (`url: https://hooks.example.com/journeyguard?token=${WEBHOOK_TOKEN}`) and check it on the receiving side.
+`event` is `failure`, `recovery`, `test`, `untested` (a journey has been *not tested* for a day, or three intervals if that is longer), `monitor` (JourneyGuard itself cannot run checks) or `monitor-recovered`. Webhooks are not signed: put a secret in the URL (`url: https://hooks.example.com/journeyguard?token=${WEBHOOK_TOKEN}`) and check it on the receiving side.
 
 Set `language: el` for Greek or `language: es` for Spanish alerts, and `dashboard.publicUrl` to include a link to the dashboard.
