@@ -22,7 +22,7 @@ JourneyGuard walks through your shop and forms like a real customer and tells yo
 
 </div>
 
-> **Status: early release (v0.1).** 58 automated tests, including 14 simulated breakages and false-alarm traps on a bundled demo shop, plus checks on our own production sites. False alarms are the bugs we care about most: please [report them](https://github.com/nxdpro/journeyguard/issues/new/choose).
+> **Status: early release (v0.1).** 64 automated tests, including 14 simulated breakages and false-alarm traps on a bundled demo shop, plus checks on our own production sites. False alarms are the bugs we care about most: please [report them](https://github.com/nxdpro/journeyguard/issues/new/choose).
 
 ## Why
 
@@ -206,7 +206,7 @@ Presets discover products and pages on their own, so most sites need no selector
 
 **Will it place orders or send messages?** The presets never place orders or payments: they stop once the payment step has loaded, and safe mode blocks order buttons and checkout requests in custom journeys too (see [safety](docs/safety.md)). A monitored contact form sends one real test message a day so you know mail works; `check` and `submit: false` never send.
 
-**My site uses Cloudflare, Wordfence or another firewall.** If the monitor is challenged, the journey is reported as *not tested* with a hint. Allow-list the server's IP address, or a secret header you set for the site ([how](docs/safety.md#letting-the-monitor-through-a-firewall)). Don't allow-list the public `X-JourneyGuard` header on its own: anyone can send it.
+**My site uses Cloudflare, Wordfence or another firewall.** If the monitor is challenged, the journey is reported as *not tested* with a hint. Allow-list the server's IP address, or a secret header you set for the site (step by step for Cloudflare, Wordfence, Sucuri and Imunify360: [docs/firewalls.md](docs/firewalls.md)). Don't allow-list the public `X-JourneyGuard` header on its own: anyone can send it.
 
 **Will it mess up my analytics?** In Google Tag Manager, add a trigger exception for visits whose user agent contains `JourneyGuard`; in server-side analytics or CDN logs you can also filter on the `X-JourneyGuard` header. Cookie banners are always answered with "necessary only", so tracking that respects consent does not run.
 

@@ -42,6 +42,8 @@ Allow-list something only you can send:
 
 Never allow-list the public `X-JourneyGuard: 1` header or the `JourneyGuard` user agent on their own: they are documented here, so anyone can send them. Extra headers, including such secrets, are only sent to the monitored site, never to third-party scripts or payment providers; if the site redirects to another domain, the browser follows without them.
 
+Step-by-step instructions for Cloudflare, Wordfence, Sucuri and Imunify360: [Allow-listing JourneyGuard](firewalls.md).
+
 ## Only monitor what you are allowed to
 
 Run JourneyGuard against sites you own, operate, or have written permission to test. Automated purchases and form submissions against third-party sites may breach their terms of service and the law.

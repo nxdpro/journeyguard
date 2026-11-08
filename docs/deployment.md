@@ -151,7 +151,7 @@ docker compose up -d --force-recreate     # systemd: sudo systemctl restart jour
 - **Logs:** `docker compose logs -f`, or `journalctl -u journeyguard -f` with systemd.
 - **"the environment variable X is not set":** add `X` to `.env` next to `journeyguard.yml`, then restart.
 - **"Chromium is not installed" or missing libraries** (Node.js only): run the `playwright install --with-deps` line again from the app folder.
-- **A journey shows *not tested* behind a firewall:** see [letting the monitor through a firewall](safety.md#letting-the-monitor-through-a-firewall).
+- **A journey shows *not tested* behind a firewall:** see [Allow-listing JourneyGuard](firewalls.md) for Cloudflare, Wordfence, Sucuri and Imunify360.
 - **A false alarm:** run `journeyguard check https://your-site` to see the same journeys with details, then [report it](https://github.com/nxdpro/journeyguard/issues/new/choose). False alarms are the bugs we fix first.
 
 ## Backups

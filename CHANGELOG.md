@@ -4,6 +4,29 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-08
+
+Fewer false alarms, a Spanish translation and clearer firewall advice. Upgrading from 0.1.0 needs no changes to your configuration.
+
+### Added
+- **Spanish** for the guided setup, dashboard, reports, alerts and diagnosis (`language: es`, `--lang es`). Thanks to @masyarakatai ([#11](https://github.com/nxdpro/journeyguard/pull/11)).
+- **[Allow-listing guide](docs/firewalls.md)** with steps for Cloudflare, Wordfence, Sucuri and Imunify360. Thanks to @masyarakatai ([#10](https://github.com/nxdpro/journeyguard/pull/10)).
+- `run --due` for running from cron; a `.env` file next to the config is read automatically; `--lang` for `demo` and `init`.
+- A journey that stays *not tested* for a day sends one alert, so a firewall or CAPTCHA cannot hide a real problem for long.
+
+### Fixed
+- Contact forms: newsletter boxes are skipped; Ninja Forms are submitted; time, date-time and other input types are filled; the browser's own validation messages and anti-robot answers count as *not tested*; Greek messages written in capitals are recognised; multi-line messages stay whole.
+- WooCommerce: `expectPayments` counts only methods a customer can choose; shops selling subscriptions, bundles or bookings are checked; shops in a folder (`example.gr/eshop/`) are checked inside that folder.
+- Cloudflare bot detection on ordinary pages is no longer reported as a firewall block; platforms are detected from technical traces only; a stray `%` in a link no longer stops detection; cookie banners inside shadow DOM and Greek "Άρνηση" buttons are closed.
+- Safe mode recognises more final buttons ("Proceed to PayPal", "Παραγγελία τώρα", "Συνέχεια στην πληρωμή").
+- `check` never mixes its results with a monitor's history, explains why a site could not be reached and writes reports safely; values taken from variables keep their YAML type; a warning appears when safe mode is off.
+- Greek: formal register in the setup wizard, natural alert titles, correct plurals and more translated messages.
+
+### Changed
+- Firewall advice everywhere now says to allow-list the server's IP address or a secret header, never the public `X-JourneyGuard` header on its own.
+- The Docker image runs on Node 24 and is smoke-tested before it is published; the Compose file follows the `0.1` line; releasing the same version twice is refused.
+- nodemailer 10.2.1.
+
 ## [0.1.0] - 2026-10-20
 
 First public release.
@@ -13,11 +36,11 @@ First public release.
 - **Presets** that need no selectors: `website` (error pages, broken scripts and styles, key pages, SSL expiry), `woocommerce` (in-stock product → cart → checkout → payment methods, classic and block checkout), `shopify` (beta) and `contact-form` (Contact Form 7, WPForms, Gravity Forms, Elementor, Fluent Forms, Ninja Forms, Divi and generic forms).
 - **`expectPayments`** for WooCommerce: an alert when a named method (for example the card gateway) disappears while others such as cash on delivery remain. Detects Stripe, PayPal, Viva, JCC, Everypay, Cardlink, Nexi, Piraeus, Eurobank/Worldline, IRIS, Revolut, Klarna and more.
 - **Custom journeys in YAML**: `goto`, `click`, `fill`, `select`, `check`, `press`, `expectVisible`, `expectHidden`, `expectText`, `expectNoText`, `expectUrl`, `waitFor`, `screenshot`, with fallback selectors.
-- **Plain-language diagnosis in English, Greek and Spanish**: WordPress and PHP fatal errors, lost carts, missing payment methods, failing mail, firewalls, banners in the way, expiring SSL and more. Greek and Spanish reports and alerts translate the common technical messages too.
+- **Plain-language diagnosis in English and Greek**: WordPress and PHP fatal errors, lost carts, missing payment methods, failing mail, firewalls, banners in the way, expiring SSL and more. Greek reports and alerts translate the common technical messages too.
 - **Alerts on change** via Telegram, Discord, Slack, email and webhooks, with screenshots, retried until delivered. The monitor also watches itself: one alert when it cannot run checks, one when it recovers, and `/healthz` answers 503 meanwhile.
 - **Dashboard** with history, "run now", password protection and `/healthz`; **self-contained, white-label HTML reports**.
 - **`journeyguard check <url>`**: checks any site once with no setup, never sends a message, results in Greek for `.gr`/`.cy` sites.
-- **Guided setup** (`init`) in English, Greek or Spanish: detects WooCommerce, Shopify and WordPress from the site's code, checks that the contact page really has a form, finds your Telegram chat by itself, sends a test alert and writes `journeyguard.yml` plus a private `.env` with a generated dashboard password.
+- **Guided setup** (`init`) in English or Greek: detects WooCommerce, Shopify and WordPress from the site's code, checks that the contact page really has a form, finds your Telegram chat by itself, sends a test alert and writes `journeyguard.yml` plus a private `.env` with a generated dashboard password.
 - `validate`, `test-alerts`, `detect`, and `demo` with a built-in shop that can be broken in 14 different ways.
 - **Docker image** (Debian slim with the headless Chromium shell, about 900 MB, amd64 and arm64), Compose file, CI and release workflows.
 
@@ -29,5 +52,6 @@ First public release.
 - Watchdog for frozen pages and frames and a deadline per step; the scheduler survives errors and storage failures; `run` and `check` exit with 1 when a journey fails and 2 when nothing could be checked.
 - The dashboard refuses to run on a public address without a strong password; "run now" is protected against cross-site requests; strict Content Security Policy. Extra headers are only sent to the monitored site.
 
-[Unreleased]: https://github.com/nxdpro/journeyguard/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/nxdpro/journeyguard/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/nxdpro/journeyguard/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/nxdpro/journeyguard/releases/tag/v0.1.0

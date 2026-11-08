@@ -33,4 +33,4 @@ body:
     id: version
     attributes:
       label: Version and how you run it
-      placeholder: e.g. 0.1.0, Docker on Ubuntu 24.04
+      placeholder: e.g. 0.1.1, Docker on Ubuntu 24.04

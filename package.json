@@ -1,6 +1,6 @@
 {
   "name": "journeyguard",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Free, open-source monitoring for the journeys that make you money: checkout, sign-up and contact forms. Self-hosted, Playwright-powered, safe by default.",
   "keywords": [
     "monitoring",
