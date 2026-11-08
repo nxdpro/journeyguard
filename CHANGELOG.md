@@ -25,7 +25,7 @@ Fewer false alarms, a Spanish translation and clearer firewall advice. Upgrading
 ### Changed
 - Firewall advice everywhere now says to allow-list the server's IP address or a secret header, never the public `X-JourneyGuard` header on its own.
 - The Docker image runs on Node 24 and is smoke-tested before it is published; the Compose file follows the `0.1` line; releasing the same version twice is refused.
-- nodemailer 10.2.1.
+- Updated dependencies: nodemailer 10.3.1 and Playwright 1.65.0, which brings a newer Chromium.
 
 ## [0.1.0] - 2026-10-20
 
