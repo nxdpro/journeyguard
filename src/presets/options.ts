@@ -64,9 +64,9 @@ const LABELS = {
     'Safe mode: JourneyGuard never submits real orders or payments',
     'Ασφαλής λειτουργία: το JourneyGuard δεν υποβάλλει ποτέ πραγματικές παραγγελίες ή πληρωμές',
   ],
-  paymentDisabled: ['Disabled in options (payment: false)', 'Απενεργοποιημένο στις ρυθμίσεις (payment: false)'],
+  paymentDisabled: ['Disabled in options (payment: false)', 'Ο έλεγχος είναι απενεργοποιημένος στις ρυθμίσεις (payment: false)'],
   imapLater: ['Inbox verification (IMAP) is planned for v0.2', 'Ο έλεγχος παράδοσης στα εισερχόμενα (IMAP) έρχεται στην έκδοση 0.2'],
-  submitDisabled: ['Sending is turned off (submit: false)', 'Η αποστολή είναι απενεργοποιημένη (submit: false)'],
+  submitDisabled: ['The form is filled in but not sent (submit: false)', 'Η φόρμα συμπληρώνεται αλλά δεν στέλνεται (submit: false)'],
 } as const;
 
 /** Stage and journey names in the configured language, so Greek reports read naturally. */

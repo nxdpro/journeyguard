@@ -4,8 +4,11 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import type { Language } from './types.js';
-import { detect, type Detection } from './detect.js';
+import { detect, PLATFORM_LABELS, type Detection } from './detect.js';
+import { label } from './presets/options.js';
+import { localizeReason } from './i18n.js';
 import { starterConfig, type AlertChoice } from './templates.js';
+import { siteBase } from './util.js';
 import { VERSION } from './version.js';
 
 /** Minimal I/O so the wizard can be driven by tests. */
@@ -58,41 +61,49 @@ const T = {
     next: 'Next steps:',
     nextDocker: 'With Docker:   docker compose up -d   then open http://<server>:8080',
     nextNode: 'With Node.js:  journeyguard run   (one check now)   ·   journeyguard start   (keeps watching)',
+    hello: 'JourneyGuard is connected ✅ You will get a message here when a journey breaks or recovers.',
   },
   el: {
-    welcome: `Ρύθμιση JourneyGuard ${VERSION}. Πάτα Enter για να κρατήσεις την τιμή στις [αγκύλες].`,
-    url: 'Διεύθυνση ιστοσελίδας (π.χ. https://to-eshop-mou.gr)',
-    badUrl: 'Δεν μοιάζει με διεύθυνση ιστοσελίδας. Δοκίμασε ξανά, π.χ. https://to-eshop-mou.gr',
+    welcome: `Ρύθμιση JourneyGuard ${VERSION}. Πατήστε Enter για να κρατήσετε την τιμή μέσα στις [αγκύλες].`,
+    url: 'Διεύθυνση ιστοσελίδας (π.χ. https://to-eshop-sas.gr)',
+    badUrl: 'Αυτό δεν μοιάζει με διεύθυνση ιστοσελίδας. Δοκιμάστε ξανά, π.χ. https://to-eshop-sas.gr',
     detecting: 'Εξετάζω την ιστοσελίδα…',
     detected: (p: string, j: string) => `Βρέθηκε: ${p}. Θα ελέγχω: ${j}.`,
-    notReached: (e: string) => `Δεν άνοιξε η ιστοσελίδα (${e}). Ρυθμίζω βασικό έλεγχο· μπορείς να προσθέσεις κι άλλους αργότερα.`,
+    notReached: (e: string) => `Η ιστοσελίδα δεν άνοιξε (${e}). Ρυθμίζω έναν βασικό έλεγχο· μπορείτε να προσθέσετε κι άλλους αργότερα.`,
     alerts: 'Πού να στέλνονται οι ειδοποιήσεις;\n  1) Telegram   2) Discord   3) Email   4) Slack   5) Πουθενά προς το παρόν\nΕπιλογή',
-    tgHelp: 'Στο Telegram άνοιξε το @BotFather, στείλε /newbot, ακολούθησε τα βήματα και αντέγραψε το token που θα σου δώσει.',
+    tgHelp: 'Στο Telegram ανοίξτε το @BotFather, στείλτε /newbot, ακολουθήστε τα βήματα και αντιγράψτε το token που θα σας δώσει.',
     tgToken: 'Token του bot',
-    tgBad: (e: string) => `Το Telegram δεν δέχτηκε το token (${e}). Δοκίμασε ξανά ή πάτα Enter για να παραλείψεις τις ειδοποιήσεις.`,
+    tgBad: (e: string) => `Το Telegram δεν δέχτηκε το token (${e}). Δοκιμάστε ξανά ή πατήστε Enter για να παραλείψετε τις ειδοποιήσεις.`,
     tgBot: (n: string) => `Συνδέθηκε με το @${n}.`,
-    tgSendNow: (n: string) => `Τώρα άνοιξε το @${n} στο Telegram (ή πρόσθεσέ το σε ομάδα), στείλε του οποιοδήποτε μήνυμα και πάτα Enter`,
+    tgSendNow: (n: string) => `Τώρα ανοίξτε το @${n} στο Telegram (ή προσθέστε το σε ομάδα), στείλτε του οποιοδήποτε μήνυμα και πατήστε Enter`,
     tgChat: (c: string) => `Βρέθηκε συνομιλία: ${c}`,
-    tgNoChat: 'Δεν βρέθηκε μήνυμα ακόμα. Επικόλλησε το chat ID (ή πάτα Enter για νέα προσπάθεια)',
-    testSent: 'Στάλθηκε δοκιμαστικό μήνυμα. Έλεγξε ότι έφτασε.',
-    testFailed: (e: string) => `Το δοκιμαστικό μήνυμα απέτυχε (${e}). Μπορείς να διορθώσεις την τιμή στο .env και να τρέξεις "journeyguard test-alerts".`,
+    tgNoChat: 'Δεν βρέθηκε μήνυμα ακόμη. Επικολλήστε το chat ID (ή πατήστε Enter για νέα προσπάθεια)',
+    testSent: 'Στάλθηκε δοκιμαστικό μήνυμα. Ελέγξτε ότι έφτασε.',
+    testFailed: (e: string) => `Το δοκιμαστικό μήνυμα απέτυχε (${e}). Μπορείτε να διορθώσετε την τιμή στο .env και να τρέξετε «journeyguard test-alerts».`,
     dcHelp: 'Στο Discord: ρυθμίσεις καναλιού › Integrations › Webhooks › New webhook › Copy webhook URL.',
     dcUrl: 'Discord webhook URL',
-    slHelp: 'Δημιούργησε incoming webhook στο https://api.slack.com/messaging/webhooks και αντέγραψε το URL.',
+    slHelp: 'Δημιουργήστε ένα incoming webhook στο https://api.slack.com/messaging/webhooks και αντιγράψτε το URL του.',
     slUrl: 'Slack webhook URL',
     smtp: 'Server SMTP ως URL, π.χ. smtps://user:κωδικός@smtp.example.com:465',
-    mailTo: 'Αποστολή ειδοποιήσεων στο (email)',
-    mailFrom: 'Αποστολέας ειδοποιήσεων (email)',
+    mailTo: 'Email παραλήπτη των ειδοποιήσεων',
+    mailFrom: 'Email αποστολέα των ειδοποιήσεων',
     written: (f: string) => `Αποθηκεύτηκε το ${f}`,
     keptEnv: (k: string) => `Κράτησα την υπάρχουσα τιμή ${k} στο .env`,
-    password: (p: string) => `Κωδικός dashboard: ${p}  (οποιοδήποτε όνομα χρήστη· αποθηκεύτηκε στο .env)`,
+    password: (p: string) => `Κωδικός για τον πίνακα ελέγχου: ${p}  (με οποιοδήποτε όνομα χρήστη· αποθηκεύτηκε στο .env)`,
     next: 'Επόμενα βήματα:',
-    nextDocker: 'Με Docker:   docker compose up -d   και άνοιξε το http://<server>:8080',
-    nextNode: 'Με Node.js:  journeyguard run   (ένας έλεγχος τώρα)   ·   journeyguard start   (συνεχής έλεγχος)',
+    nextDocker: 'Με Docker:   docker compose up -d   και ανοίξτε το http://<διεύθυνση-του-server>:8080',
+    nextNode: 'Με Node.js:  journeyguard run   (ένας έλεγχος τώρα)   ·   journeyguard start   (συνεχής παρακολούθηση)',
+    hello: 'Το JourneyGuard συνδέθηκε ✅ Εδώ θα λαμβάνετε μήνυμα όταν μια διαδρομή χαλάσει ή διορθωθεί.',
   },
 };
 
 type Fetch = typeof fetch;
+
+/** The name a person sees for a preset (e.g. «Φόρμα επικοινωνίας»), not its id. */
+function journeyLabel(lang: Language, preset: string): string {
+  const key = ({ website: 'websiteJourney', woocommerce: 'wooJourney', shopify: 'shopifyJourney', 'contact-form': 'contactJourney' } as const)[preset as 'website'];
+  return key ? label(lang, key) : preset;
+}
 
 export function normalizeSiteUrl(input: string): string | undefined {
   const raw = input.trim();
@@ -135,7 +146,7 @@ async function postJson(fetchImpl: Fetch, url: string, body: unknown): Promise<v
 
 async function askAlerts(p: Prompter, t: (typeof T)['en'], fetchImpl: Fetch): Promise<AlertChoice | undefined> {
   const choice = (await p.ask(t.alerts, '1')).trim();
-  const hello = 'JourneyGuard is connected ✅ You will get a message here when a journey breaks or recovers.';
+  const hello = t.hello;
 
   if (choice === '1') {
     p.say(t.tgHelp);
@@ -282,10 +293,10 @@ export async function runSetup(opts: SetupOptions): Promise<SetupResult> {
       p?.say(t.detecting);
       try {
         detection = await detect(url);
-        url = new URL(detection.url).origin;
-        p?.say(t.detected(detection.platform, detection.journeys.map((j) => j.preset).join(', ')));
+        url = siteBase(url, detection.url);
+        p?.say(t.detected(PLATFORM_LABELS[detection.platform] ?? detection.platform, detection.journeys.map((j) => journeyLabel(lang, j.preset ?? '')).join(', ')));
       } catch (e) {
-        p?.say(t.notReached((e as Error).message));
+        p?.say(t.notReached(localizeReason((e as Error).message, lang)));
       }
     }
 

@@ -22,7 +22,7 @@ JourneyGuard walks through your shop and forms like a real customer and tells yo
 
 </div>
 
-> **Status: early release (v0.1).** Tested against a demo shop with more than 50 failure scenarios and on our own production sites. False alarms are the bugs we care about most: please [report them](https://github.com/nxdpro/journeyguard/issues/new/choose).
+> **Status: early release (v0.1).** 58 automated tests, including 14 simulated breakages and false-alarm traps on a bundled demo shop, plus checks on our own production sites. False alarms are the bugs we care about most: please [report them](https://github.com/nxdpro/journeyguard/issues/new/choose).
 
 ## Why
 
@@ -53,7 +53,12 @@ JourneyGuard complements an uptime monitor such as [Uptime Kuma](https://github.
 docker run --rm ghcr.io/nxdpro/journeyguard check https://your-shop.com
 ```
 
-JourneyGuard detects the platform (WooCommerce, Shopify, WordPress), then walks through the journeys that fit: homepage and SSL, product → cart → checkout → payment methods, and the contact form. Nothing is bought and no message is sent: the contact form is filled in but not submitted. Results appear in the terminal, in Greek for `.gr` and `.cy` sites (`--lang en|el` to choose). Add `--report report.html` for a shareable report (see [deployment](docs/deployment.md#one-off-checks-and-reports)).
+JourneyGuard detects the platform (WooCommerce, Shopify, WordPress), then walks through the journeys that fit: homepage and SSL, product → cart → checkout → payment methods, and the contact form. Nothing is bought and no message is sent: the contact form is filled in but not submitted. Results appear in the terminal, in Greek for `.gr` and `.cy` sites (`--lang en|el` to choose). For a report with screenshots that you can send to someone, save it into the current folder:
+
+```bash
+docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/out" \
+  ghcr.io/nxdpro/journeyguard check https://your-shop.com --report /out/report.html
+```
 
 Only check sites you own or are allowed to test.
 
@@ -98,16 +103,16 @@ curl -O https://raw.githubusercontent.com/nxdpro/journeyguard/main/docker-compos
 docker compose up -d
 ```
 
-Open http://your-server:8080 and sign in with any username and the password the setup printed (it is also in `.env`). Useful one-off commands:
+Open `http://your-server:8080` and sign in with any username and the password the setup printed (it is also in `.env`). Useful one-off commands:
 
 ```bash
 docker compose run --rm journeyguard test-alerts   # send a test message to every alert channel
-docker compose run --rm journeyguard run           # run every check once and print the result
+docker compose run --rm journeyguard run           # run every check once (also sends the contact-form test message)
 ```
 
-With a Node.js install the same steps are `journeyguard init`, `journeyguard run` and `journeyguard start`.
+After you edit `journeyguard.yml` or `.env`, apply the change with `docker compose up -d --force-recreate`. If the dashboard is reachable from the internet, put it behind HTTPS ([Caddy example](docs/deployment.md#docker-compose-recommended)), otherwise the password travels in clear text.
 
-See [deployment](docs/deployment.md) for reverse proxies, systemd and CI.
+With a Node.js install the same steps are `journeyguard init`, `journeyguard run` and `journeyguard start`. See [deployment](docs/deployment.md) for reverse proxies, systemd, cron, CI, backups and troubleshooting.
 
 ## Configuration
 
@@ -145,7 +150,7 @@ Full reference: [docs/configuration.md](docs/configuration.md). More examples: [
 
 | Preset | What it checks |
 |---|---|
-| `website` | Homepage renders without error pages, scripts and styles load, key pages open, SSL certificate is not about to expire |
+| `website` | Homepage renders without error pages, scripts and styles load, the pages you list in `pages` open, SSL certificate is not about to expire |
 | `woocommerce` | Finds an in-stock product → adds it to the cart → cart keeps it → checkout opens → payment methods are offered, optionally the ones you name (order **not** placed) |
 | `shopify` (beta) | Store is public → product → add to cart → checkout opens → payment section loads (order **not** placed) |
 | `contact-form` | Fills the form like a visitor, submits it once a day and waits for the confirmation; detects Contact Form 7, WPForms, Gravity Forms, Elementor, Divi and generic forms. `submit: false` checks the form without sending |
@@ -179,37 +184,37 @@ Presets discover products and pages on their own, so most sites need no selector
 
 - **From an uptime or keyword monitor** (Uptime Kuma, UptimeRobot): those load one URL. JourneyGuard adds a product to the cart, opens checkout and checks the payment methods, with the cookies and JavaScript of a real visit.
 - **From Checkly, Datadog Synthetics or your own Playwright tests**: those are great if your team writes and maintains test code. JourneyGuard is for shops and agencies that don't: presets find a buyable product through the WooCommerce Store API or Shopify's `products.json`, so there is nothing to write and little to break when the theme changes.
-- **Safety built in**: an in-page guard and a network backstop make sure a check never places an order, which hand-written tests rarely guarantee.
+- **Safety built in**: the presets stop before the final order button, and safe mode (an in-page guard plus a network backstop for WooCommerce, Shopify, OpenCart, PrestaShop, Magento, Stripe and PayPal) refuses order and payment buttons in your own journeys too.
 - **Answers, not stack traces**: every failure comes with a likely cause and what to check, in English or Greek.
 - **Free and self-hosted**: MIT licensed, one container, your data stays on your server.
 
 ## Safe by design
 
 - Safe mode is **on by default**: JourneyGuard refuses to click anything that looks like *place order*, *pay now* or *ολοκλήρωση παραγγελίας*. A guard inside the page also stops pressing Enter in a checkout field and scripts that submit the order form, and order and payment requests are blocked at the network level as a last line of defence. The shop presets stop once the payment step has loaded.
-- Requests to your site carry an `X-JourneyGuard: 1` header and every request a `JourneyGuard/x.y` user agent, so you can allow-list the monitor in your firewall and exclude it from analytics. Extra headers are never sent to third parties.
+- It identifies itself: every request carries a `JourneyGuard/x.y` user agent (and requests to your site an `X-JourneyGuard: 1` header), so you can recognise it in logs and exclude it from analytics. To let it through a firewall, allow-list the server's IP address or a secret header of your own ([how](docs/safety.md#letting-the-monitor-through-a-firewall)); extra headers are never sent to third parties.
 - It does not bypass CAPTCHAs or bot protection: those pages are reported as *not tested* rather than attacked.
 - Monitor only sites you own or are authorised to test. Read [docs/safety.md](docs/safety.md).
 
 ## Known limitations
 
 - Email delivery is not verified yet: the contact-form check confirms the site says "sent". Inbox checks (IMAP) are planned for v0.2.
-- Pages behind a CAPTCHA, a bot challenge or a strict firewall are reported as *not tested* until you allow-list the monitor.
+- Pages behind a CAPTCHA or a recognised bot challenge (Cloudflare, Sucuri, Wordfence, Imunify360, rate limiting) are reported as *not tested* until you allow-list the monitor. A plain "403 Forbidden" from a firewall it does not recognise counts as a failure, since real visitors may be refused too.
 - Payment methods are checked as offered, not paid with. Name the methods that matter with `expectPayments`; without it, the check only fails when no method is offered at all.
 - Shopify's checkout changes often, so the `shopify` preset is beta.
 
 ## FAQ
 
-**Will it place orders or send messages?** It never places orders or payments (see [safety](docs/safety.md)). A monitored contact form sends one real test message a day so you know mail works; `check` and `submit: false` never send.
+**Will it place orders or send messages?** The presets never place orders or payments: they stop once the payment step has loaded, and safe mode blocks order buttons and checkout requests in custom journeys too (see [safety](docs/safety.md)). A monitored contact form sends one real test message a day so you know mail works; `check` and `submit: false` never send.
 
-**My site uses Cloudflare, Wordfence or another firewall.** If the monitor is challenged, the journey is reported as *not tested* with a hint. Allow-list requests that carry the `X-JourneyGuard` header, or the server's IP address.
+**My site uses Cloudflare, Wordfence or another firewall.** If the monitor is challenged, the journey is reported as *not tested* with a hint. Allow-list the server's IP address, or a secret header you set for the site ([how](docs/safety.md#letting-the-monitor-through-a-firewall)). Don't allow-list the public `X-JourneyGuard` header on its own: anyone can send it.
 
-**Will it mess up my analytics?** Exclude the `JourneyGuard` user agent or the `X-JourneyGuard` header in your analytics filters. Cookie banners are always answered with "necessary only", so tracking scripts that respect consent do not run.
+**Will it mess up my analytics?** In Google Tag Manager, add a trigger exception for visits whose user agent contains `JourneyGuard`; in server-side analytics or CDN logs you can also filter on the `X-JourneyGuard` header. Cookie banners are always answered with "necessary only", so tracking that respects consent does not run.
 
 **Is it GDPR-friendly?** It runs on your own server, stores screenshots of your own pages and sends data nowhere except the alert channels you configure.
 
 **How much does it need?** One container; 1 vCPU and 1–2 GB RAM handle dozens of journeys, because journeys run one at a time.
 
-**Which platforms are supported?** WooCommerce, Shopify (beta) and any website or contact form. PrestaShop, OpenCart and Magento presets are on the roadmap; until then, describe the journey in YAML.
+**Which platforms are supported?** WooCommerce, Shopify (beta) and any website or contact form. PrestaShop and OpenCart presets are planned for v0.2 (Magento is under discussion); until then, describe the journey in YAML.
 
 ## Use it in CI
 
@@ -227,7 +232,7 @@ Run the same journeys after every deploy and fail the pipeline if checkout broke
 - Every client site in one dashboard, each with its own journeys and schedule ([`examples/agency.yml`](examples/agency.yml)).
 - A self-contained HTML report with your name and link (`report.brandName`, `report.brandUrl`) to send to the client.
 - Alerts and reports in English or Greek.
-- Want to offer monitoring under your own brand without running servers? Ask about our [reseller programme](mailto:info@nxdpro.com?subject=JourneyGuard%20for%20agencies).
+- Want to offer monitoring under your own brand without running servers? Ask about our [Resellers & Partners programme](mailto:info@nxdpro.com?subject=JourneyGuard%20for%20agencies).
 
 ## Roadmap
 
@@ -239,7 +244,7 @@ See [ROADMAP.md](ROADMAP.md) and vote with 👍 on issues. Platform requests are
 
 ## Contributing
 
-Bug reports, presets for new platforms, translations and docs are all welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md). Run the test suite with `npm test`: it exercises every preset against the bundled demo shop.
+Bug reports, presets for new platforms, translations and docs are all welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md). Run the test suite with `npm test` (it needs Chromium: `npx playwright install chromium`): it runs the WooCommerce, contact-form and website presets, safe mode, alerts and the dashboard against the bundled demo shop. The Shopify preset has no end-to-end test yet, and help is welcome.
 
 ## Professional help
 

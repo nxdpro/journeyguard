@@ -1,6 +1,6 @@
 import { parseArgs } from 'node:util';
 import { existsSync } from 'node:fs';
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { ConfigError, DEFAULT_SETTINGS, loadConfig, normalizeConfig } from './config.js';
@@ -9,15 +9,15 @@ import { Engine } from './engine.js';
 import { Scheduler } from './scheduler.js';
 import { createServer, listen } from './server.js';
 import { renderReport, viewsFromRuns } from './report.js';
-import { detect } from './detect.js';
+import { detect, PLATFORM_LABELS } from './detect.js';
 import { runSetup } from './setup.js';
 import { buildMessage, dispatch } from './alerts/index.js';
 import { startDemoShop, BREAK_MODES, type BreakMode } from './demo/shop.js';
 import { Store } from './store.js';
 import { infoList } from './render.js';
-import { localizeError } from './i18n.js';
+import { localizeError, localizeReason, t } from './i18n.js';
 import type { Config, RunResult } from './types.js';
-import { formatDuration, slugify } from './util.js';
+import { formatDuration, siteBase, slugify } from './util.js';
 import { VERSION } from './version.js';
 
 const tty = process.stdout.isTTY && !process.env.NO_COLOR;
@@ -45,6 +45,7 @@ ${bold('Usage')}
 ${bold('Options')}
   -c, --config <file>   Config file (default: journeyguard.yml or $JOURNEYGUARD_CONFIG)
   --site <name>         Only this site
+  --due                 run: only journeys whose interval has passed (for cron)
   --report <file>       Also write a self-contained HTML report
   --json                Print results as JSON
   --no-save             Do not store results (CI smoke tests)
@@ -52,7 +53,7 @@ ${bold('Options')}
   --headed              Show the browser window
   --port <n>            Dashboard port (start/serve/demo)
   --host <addr>         Dashboard host (start/serve/demo)
-  --lang <en|el>        check: language of the results (default: el for .gr/.cy sites, otherwise en)
+  --lang <en|el>        Language of the results, the demo and the guided setup (check: el for .gr/.cy sites by default)
   --send-test-message   check: really send the contact form (by default it is only filled in)
   --allow-no-password   Allow serving the dashboard on a public address without a password
   --break <mode>        Demo failure: ${BREAK_MODES.filter((m) => m !== 'none').join(', ')}
@@ -61,14 +62,70 @@ ${bold('Options')}
   -v, --version         Show version
 `;
 
-function printRun(run: RunResult, dataDir?: string, lang: 'en' | 'el' = 'en'): void {
-  const tag = run.status === 'failed' ? red(bold('FAILED')) : run.status === 'warning' ? yellow(bold('WARNING')) : green(bold('PASSED'));
-  console.log(`\n${bold(run.siteName)} › ${run.journeyName}  ${tag}  ${dim(formatDuration(run.durationMs))}${run.attempts > 1 ? dim(` (${run.attempts} attempts)`) : ''}`);
+type Lang = 'en' | 'el';
+
+/** Terminal wording in English and Greek (Greek capitals take no accents). */
+const SAY = {
+  en: {
+    passed: 'PASSED',
+    failed: 'FAILED',
+    warning: 'WARNING',
+    attempts: (n: number) => `${n} attempts`,
+    notTested: 'not tested',
+    screenshot: 'Screenshot:',
+    reportWritten: 'Report written to',
+    journeys: (n: number) => `${n} journey${n === 1 ? '' : 's'}`,
+    unchecked: (n: number) => `${n} journey${n === 1 ? '' : 's'} could not be checked`,
+    failing: (n: number) => `${n} journey${n === 1 ? '' : 's'} failing`,
+    allWorking: 'All checked journeys working',
+    nothingChecked: 'Nothing was checked',
+    checked: (n: number) => `${n} checked`,
+    sent: (title: string) => `sent "${title}"`,
+    checking: 'checking',
+    contactAt: (p: string) => `contact form at ${p}`,
+    formNotSent: 'The contact form is filled in but not sent; add --send-test-message to send one real test message.',
+    reportHint: 'For screenshots and a report you can send, add --report report.html',
+    unreachable: (url: string, why: string) => `Could not open ${url}: ${why}. Check the address and that the site is online.`,
+    nothingDue: 'Nothing is due yet: every journey ran within its interval.',
+    safeModeOff: 'Safe mode is OFF: journeys may place real orders and payments.',
+    inconclusive: (n: number) => `${n} journey${n === 1 ? '' : 's'} could not be fully checked (see the warnings above)`,
+  },
+  el: {
+    passed: 'ΕΠΙΤΥΧΙΑ',
+    failed: 'ΑΠΟΤΥΧΙΑ',
+    warning: 'ΠΡΟΕΙΔΟΠΟΙΗΣΗ',
+    attempts: (n: number) => `${n} προσπάθειες`,
+    notTested: 'δεν ελέγχθηκε',
+    screenshot: 'Στιγμιότυπο:',
+    reportWritten: 'Η αναφορά αποθηκεύτηκε στο',
+    journeys: (n: number) => (n === 1 ? '1 διαδρομή' : `${n} διαδρομές`),
+    unchecked: (n: number) => (n === 1 ? 'Δεν ήταν δυνατός ο έλεγχος σε 1 διαδρομή' : `Δεν ήταν δυνατός ο έλεγχος σε ${n} διαδρομές`),
+    failing: (n: number) => (n === 1 ? '1 διαδρομή έχει πρόβλημα' : `${n} διαδρομές έχουν πρόβλημα`),
+    allWorking: 'Όλες οι διαδρομές που ελέγχθηκαν λειτουργούν',
+    nothingChecked: 'Δεν ελέγχθηκε τίποτα',
+    checked: (n: number) => `ελέγχθηκαν: ${n}`,
+    sent: (title: string) => `στάλθηκε «${title}»`,
+    checking: 'έλεγχος του',
+    contactAt: (p: string) => `φόρμα επικοινωνίας στο ${p}`,
+    formNotSent: 'Η φόρμα επικοινωνίας συμπληρώνεται αλλά δεν στέλνεται· με --send-test-message στέλνεται ένα πραγματικό δοκιμαστικό μήνυμα.',
+    reportHint: 'Για στιγμιότυπα και αναφορά που μπορείτε να στείλετε, προσθέστε --report report.html',
+    unreachable: (url: string, why: string) => `Δεν ήταν δυνατό να ανοίξει το ${url}: ${why}. Ελέγξτε τη διεύθυνση και ότι η ιστοσελίδα λειτουργεί.`,
+    nothingDue: 'Δεν είναι ώρα για κανέναν έλεγχο: όλες οι διαδρομές ελέγχθηκαν μέσα στο διάστημά τους.',
+    safeModeOff: 'Η ασφαλής λειτουργία είναι ΑΠΕΝΕΡΓΟΠΟΙΗΜΕΝΗ: οι διαδρομές μπορεί να κάνουν πραγματικές παραγγελίες και πληρωμές.',
+    inconclusive: (n: number) => (n === 1 ? '1 διαδρομή δεν ελέγχθηκε πλήρως (δείτε τις προειδοποιήσεις παραπάνω)' : `${n} διαδρομές δεν ελέγχθηκαν πλήρως (δείτε τις προειδοποιήσεις παραπάνω)`),
+  },
+} satisfies Record<Lang, unknown>;
+
+
+function printRun(run: RunResult, dataDir?: string, lang: Lang = 'en'): void {
+  const say = SAY[lang];
+  const tag = run.status === 'failed' ? red(bold(say.failed)) : run.status === 'warning' ? yellow(bold(say.warning)) : green(bold(say.passed));
+  console.log(`\n${bold(run.siteName)} › ${run.journeyName}  ${tag}  ${dim(formatDuration(run.durationMs))}${run.attempts > 1 ? dim(` (${say.attempts(run.attempts)})`) : ''}`);
   for (const s of run.stages) {
     if (s.status === 'passed') console.log(`  ${green('✔')} ${s.name}`);
     else if (s.status === 'failed') console.log(`  ${red('✖')} ${s.name} ${dim('—')} ${red(localizeError(s.error ?? '', lang))}`);
     else if (s.status === 'warning') console.log(`  ${yellow('!')} ${s.name} ${dim('—')} ${yellow(localizeError(s.reason ?? '', lang))}`);
-    else console.log(`  ${dim('○')} ${dim(`${s.name} — ${lang === 'el' ? 'δεν ελέγχθηκε' : 'not tested'}${s.reason ? ` (${localizeError(s.reason, lang)})` : ''}`)}`);
+    else console.log(`  ${dim('○')} ${dim(`${s.name} — ${say.notTested}${s.reason ? ` (${localizeError(s.reason, lang)})` : ''}`)}`);
   }
   for (const hint of run.hints) {
     const color = hint.severity === 'critical' ? red : hint.severity === 'warning' ? yellow : cyan;
@@ -79,7 +136,7 @@ function printRun(run: RunResult, dataDir?: string, lang: 'en' | 'el' = 'en'): v
   if (run.evidence?.screenshot && dataDir) {
     const shot = path.join(dataDir, 'runs', run.siteId, run.journeyId, run.id, run.evidence.screenshot);
     const rel = path.relative(process.cwd(), shot);
-    console.log(`  ${dim('Screenshot:')} ${rel.startsWith('..') ? shot : rel}`);
+    console.log(`  ${dim(say.screenshot)} ${rel.startsWith('..') ? shot : rel}`);
   }
 }
 
@@ -95,11 +152,18 @@ async function load(file: string, overrides: { headed?: boolean; port?: string; 
   return config;
 }
 
-async function writeReport(file: string, runs: RunResult[], config: Config): Promise<void> {
+async function writeReport(file: string, runs: RunResult[], config: Config): Promise<boolean> {
   const store = new Store(config.settings.dataDir);
   const html = await renderReport(viewsFromRuns(runs), config.settings, (run, f) => store.artifactPath(run.siteId, run.journeyId, run.id, f) ?? '');
-  await writeFile(file, html);
-  console.log(`\n${dim('Report written to')} ${file}`);
+  try {
+    await writeFile(file, html);
+  } catch (e) {
+    console.error(red(`Could not write ${file}: ${(e as Error).message}`));
+    console.error(dim('With Docker, write into a mounted folder, e.g. -v "$PWD:/out" --user "$(id -u):$(id -g)" ... --report /out/report.html'));
+    return false;
+  }
+  console.log(`\n${dim(SAY[config.settings.language].reportWritten)} ${file}`);
+  return true;
 }
 
 async function cmdRun(values: Record<string, string | boolean | undefined>): Promise<number> {
@@ -113,35 +177,46 @@ async function cmdRun(values: Record<string, string | boolean | undefined>): Pro
   const json = !!values.json;
   const engine = new Engine(config, sites, {
     onResult: (run) => {
-      if (!json) printRun(run, save || values.report ? config.settings.dataDir : undefined, config.settings.language);
+      if (!json) printRun(run, save ? config.settings.dataDir : undefined, config.settings.language);
     },
     onAlert: (title, results) => {
       if (json) return;
-      for (const r of results) console.log(`  ${r.ok ? green('✉') : red('✉')} ${dim(`${r.channel}: ${r.ok ? `sent "${title}"` : r.error}`)}`);
+      for (const r of results) console.log(`  ${r.ok ? green('✉') : red('✉')} ${dim(`${r.channel}: ${r.ok ? SAY[config.settings.language].sent(title) : r.error}`)}`);
     },
     onError: (m) => console.error(red(m)),
   }, { save: save || !!values.report, alert: !values['no-alerts'] });
 
-  if (!json) console.log(dim(`JourneyGuard v${VERSION} · ${sites.reduce((n, s) => n + s.journeys.length, 0)} journey(s)`));
-  const runs = await engine.runAll();
-  if (values.report) await writeReport(values.report as string, runs, config);
+  const say = SAY[config.settings.language];
+  if (!config.settings.safeMode) console.warn(yellow(bold(say.safeModeOff)));
+  const targets = values.due ? await engine.dueTargets() : sites.flatMap((site) => site.journeys.map((journey) => ({ site, journey })));
+  if (!targets.length) {
+    if (!json) console.log(dim(say.nothingDue));
+    else console.log('[]');
+    return 0;
+  }
+  if (!json) console.log(dim(`JourneyGuard v${VERSION} · ${say.journeys(targets.length)}`));
+  const runs = await engine.run(targets);
+  const reportOk = values.report ? await writeReport(values.report as string, runs, config) : true;
   if (json) console.log(JSON.stringify(runs, null, 2));
-  return summarize(runs, json);
+  const code = summarize(runs, json, config.settings.language);
+  return code === 0 && !reportOk ? 2 : code;
 }
 
 /** Prints the closing line and returns the exit code: 1 = a journey is broken, 2 = nothing could be checked. */
-function summarize(runs: RunResult[], json: boolean): number {
+function summarize(runs: RunResult[], json: boolean, lang: Lang = 'en'): number {
+  const say = SAY[lang];
   const failed = runs.filter((r) => r.status === 'failed').length;
   const unchecked = runs.filter((r) => r.monitorError);
   if (!json) {
     if (unchecked.length) {
-      console.log(`\n${red(bold(`${unchecked.length} journey(s) could not be checked`))}: ${unchecked[0]!.monitorError}`);
+      console.log(`\n${red(bold(say.unchecked(unchecked.length)))}: ${unchecked[0]!.monitorError}`);
       if (/executable doesn't exist/i.test(unchecked[0]!.monitorError ?? '')) {
         console.log(yellow('Chromium is not installed. Run: npx playwright install --with-deps chromium (on Linux it asks for sudo to add system libraries), or use the Docker image.'));
       }
     }
     const checked = runs.length - unchecked.length;
-    console.log(`\n${failed ? red(bold(`${failed} journey(s) failing`)) : checked ? green(bold('All checked journeys working')) : red(bold('Nothing was checked'))} ${dim(`(${checked} checked)`)}`);
+    const partial = runs.filter((r) => r.inconclusive && !r.monitorError).length;
+    console.log(`\n${failed ? red(bold(say.failing(failed))) : partial ? yellow(bold(say.inconclusive(partial))) : checked ? green(bold(say.allWorking)) : red(bold(say.nothingChecked))} ${dim(`(${say.checked(checked)})`)}`);
   }
   // 1 = a journey is broken, 2 = JourneyGuard could not check (never report "all good" then).
   return failed ? 1 : unchecked.length ? 2 : 0;
@@ -199,27 +274,44 @@ async function cmdCheck(url: string | undefined, values: Record<string, string |
   }
   const json = !!values.json;
   const target = /^https?:\/\//i.test(url) ? url : `https://${url}`;
-  const d = await detect(target);
+  const guess: Lang = values.lang === 'el' || values.lang === 'en' ? values.lang : /\.(gr|cy)(?:[:/]|$)/i.test(target) ? 'el' : 'en';
+  let d: Awaited<ReturnType<typeof detect>>;
+  try {
+    d = await detect(target);
+  } catch (e) {
+    console.error(red(SAY[guess].unreachable(target, localizeReason((e as Error).message || 'no answer', guess))));
+    return 2;
+  }
   const home = new URL(d.url);
-  const lang = values.lang === 'el' || values.lang === 'en' ? values.lang : /\.(gr|cy)$/i.test(home.hostname) ? 'el' : 'en';
+  // Keep the folder the user typed (a shop in /eshop/), but not one a redirect added (/el/, /en/).
+  const siteUrl = siteBase(target, d.url);
+  const lang: Lang = values.lang === 'el' || values.lang === 'en' ? values.lang : /\.(gr|cy)$/i.test(home.hostname) ? 'el' : 'en';
+  const say = SAY[lang];
   const send = !!values['send-test-message'];
   const journeys = d.journeys.map((j) => (j.preset === 'contact-form' ? { ...j, options: { ...(j.options ?? {}), submit: send } } : j));
-  const dataDir = process.env.JOURNEYGUARD_DATA_DIR ?? (await mkdtemp(path.join(os.tmpdir(), 'journeyguard-check-')));
-  const config = normalizeConfig({
-    settings: { dataDir, language: lang, browser: { headless: !values.headed } },
-    sites: [{ name: home.hostname.replace(/^www\./, ''), url: home.origin, journeys }],
-  });
-  const sites = resolveSites(config);
-  if (!json) {
-    const found = [d.platform !== 'unknown' ? d.platform : undefined, d.contactPath ? `contact form at ${d.contactPath}` : undefined, d.cdn].filter(Boolean);
-    console.log(`${bold('JourneyGuard')} v${VERSION} · checking ${cyan(home.origin)}${found.length ? dim(` (${found.join(' · ')})`) : ''}`);
-    if (d.contactPath && !send) console.log(dim('The contact form is filled in but not sent; add --send-test-message to send one real test message.'));
+  // A private scratch folder: a one-off check never mixes with a monitor's history.
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), 'journeyguard-check-'));
+  try {
+    const config = normalizeConfig({
+      settings: { dataDir, language: lang, browser: { headless: !values.headed } },
+      sites: [{ name: home.hostname.replace(/^www\./, ''), url: siteUrl, journeys }],
+    });
+    const sites = resolveSites(config);
+    if (!json) {
+      const found = [d.platform !== 'unknown' ? PLATFORM_LABELS[d.platform] : undefined, d.contactPath ? say.contactAt(d.contactPath) : undefined, d.cdn].filter(Boolean);
+      console.log(`${bold('JourneyGuard')} v${VERSION} · ${say.checking} ${cyan(siteUrl)}${found.length ? dim(` (${found.join(' · ')})`) : ''}`);
+      if (d.contactPath && !send) console.log(dim(say.formNotSent));
+    }
+    const engine = new Engine(config, sites, { onResult: (run) => (json ? undefined : printRun(run, undefined, lang)), onError: (m) => console.error(red(m)) }, { save: true, alert: false });
+    const runs = await engine.runAll();
+    const reportOk = values.report ? await writeReport(values.report as string, runs, config) : true;
+    if (json) console.log(JSON.stringify({ detection: d, runs }, null, 2));
+    const code = summarize(runs, json, lang);
+    if (!json && !values.report && runs.some((r) => r.status !== 'passed')) console.log(dim(say.reportHint));
+    return code === 0 && !reportOk ? 2 : code;
+  } finally {
+    await rm(dataDir, { recursive: true, force: true }).catch(() => undefined);
   }
-  const engine = new Engine(config, sites, { onResult: (run) => (json ? undefined : printRun(run, dataDir, lang)), onError: (m) => console.error(red(m)) }, { save: true, alert: false });
-  const runs = await engine.runAll();
-  if (values.report) await writeReport(values.report as string, runs, config);
-  if (json) console.log(JSON.stringify({ detection: d, runs }, null, 2));
-  return summarize(runs, json);
 }
 
 async function cmdDetect(url: string | undefined): Promise<number> {
@@ -227,7 +319,13 @@ async function cmdDetect(url: string | undefined): Promise<number> {
     console.error('Usage: journeyguard detect <url>');
     return 2;
   }
-  const d = await detect(url);
+  let d: Awaited<ReturnType<typeof detect>>;
+  try {
+    d = await detect(/^https?:\/\//i.test(url) ? url : `https://${url}`);
+  } catch (e) {
+    console.error(red(SAY.en.unreachable(url, (e as Error).message || 'no answer')));
+    return 2;
+  }
   console.log(`${bold(d.url)}  ${dim(`HTTP ${d.status}`)}`);
   console.log(`  Platform:  ${bold(d.platform)}${d.signals.length ? dim(` (${d.signals.join(', ')})`) : ''}`);
   if (d.contactPath) console.log(`  Contact:   ${d.contactPath}`);
@@ -249,6 +347,7 @@ async function cmdInit(url: string | undefined, values: Record<string, string | 
       configFile: file,
       url,
       interactive,
+      language: values.lang === 'el' || values.lang === 'en' ? values.lang : undefined,
       // Without a terminal (CI, docker without -it) use defaults and just report what was written.
       prompter: interactive ? undefined : { ask: async (_q, fallback) => fallback ?? '', say: (m) => console.log(m), close: () => undefined },
     });
@@ -287,12 +386,12 @@ async function cmdTestAlerts(values: Record<string, string | boolean | undefined
     siteName: site.name,
     siteUrl: site.url,
     journeyId: 'test',
-    journeyName: 'Alert test',
+    journeyName: t(config.settings.language, 'alertTest'),
     status: 'passed',
     startedAt: new Date().toISOString(),
     durationMs: 0,
     attempts: 1,
-    stages: [{ name: 'Alert channel', status: 'passed', durationMs: 0, steps: [] }],
+    stages: [{ name: t(config.settings.language, 'alertChannel'), status: 'passed', durationMs: 0, steps: [] }],
     hints: [],
     info: {},
   };
@@ -310,7 +409,15 @@ async function cmdDemo(values: Record<string, string | boolean | undefined>): Pr
   const shop = await startDemoShop(0, 'none');
   const dataDir = await mkdtemp(path.join(os.tmpdir(), 'journeyguard-demo-'));
   const config = normalizeConfig({
-    settings: { dataDir, interval: '1h', timeout: '10s', retries: 0, browser: { headless: !values.headed }, dashboard: { ...DEFAULT_SETTINGS.dashboard, port: Number(values.port ?? 8080) } },
+    settings: {
+      dataDir,
+      interval: '1h',
+      timeout: '10s',
+      retries: 0,
+      language: values.lang === 'el' ? 'el' : 'en',
+      browser: { headless: !values.headed },
+      dashboard: { ...DEFAULT_SETTINGS.dashboard, port: Number(values.port ?? 8080) },
+    },
     sites: [
       {
         name: 'Aegean Coffee Co. (demo)',
@@ -320,12 +427,13 @@ async function cmdDemo(values: Record<string, string | boolean | undefined>): Pr
     ],
   });
   const sites = resolveSites(config);
-  const engine = new Engine(config, sites, { onResult: (run) => printRun(run, dataDir) }, { save: true, alert: false });
+  const engine = new Engine(config, sites, { onResult: (run) => printRun(run, dataDir, config.settings.language) }, { save: true, alert: false });
 
-  console.log(`${bold('JourneyGuard demo')} · demo shop running at ${cyan(shop.url)}\n`);
-  console.log(bold('1) The shop is healthy:'));
+  const el = config.settings.language === 'el';
+  console.log(`${bold('JourneyGuard demo')} · ${el ? 'το δοκιμαστικό eShop τρέχει στο' : 'demo shop running at'} ${cyan(shop.url)}\n`);
+  console.log(bold(el ? '1) Το eShop λειτουργεί κανονικά:' : '1) The shop is healthy:'));
   await engine.runAll();
-  console.log(`\n${bold(`2) Now we break it (--break ${mode}) — this is what an owner normally never notices:`)}`);
+  console.log(`\n${bold(el ? `2) Τώρα το «σπάμε» (--break ${mode}): αυτό συνήθως δεν το προσέχει κανείς:` : `2) Now we break it (--break ${mode}) — this is what an owner normally never notices:`)}`);
   shop.setMode(mode);
   await engine.runAll();
 
@@ -333,8 +441,8 @@ async function cmdDemo(values: Record<string, string | boolean | undefined>): Pr
   // The demo only shows fake data, so it may listen on all interfaces (needed inside Docker).
   const demoHost = (values.host as string | undefined) ?? '127.0.0.1';
   const port = await listen(server, demoHost, config.settings.dashboard.port).catch(() => listen(server, demoHost, 0));
-  console.log(`\n${bold('Dashboard:')} ${cyan(`http://localhost:${port}`)}   ${dim('(Ctrl+C to stop)')}`);
-  console.log(dim(`Toggle failures live: ${shop.url}/__demo/break?mode=none|${BREAK_MODES.filter((m) => m !== 'none').join('|')}`));
+  console.log(`\n${bold(el ? 'Πίνακας ελέγχου:' : 'Dashboard:')} ${cyan(`http://localhost:${port}`)}   ${dim(el ? '(Ctrl+C για τερματισμό)' : '(Ctrl+C to stop)')}`);
+  console.log(dim(`${el ? 'Αλλάξτε τη βλάβη ζωντανά' : 'Toggle failures live'}: ${shop.url}/__demo/break?mode=none|${BREAK_MODES.filter((m) => m !== 'none').join('|')}`));
   const stop = async () => {
     server.close();
     await shop.close();
@@ -364,6 +472,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       'allow-no-password': { type: 'boolean' },
       lang: { type: 'string' },
       'send-test-message': { type: 'boolean' },
+      due: { type: 'boolean' },
       yes: { type: 'boolean', short: 'y' },
       help: { type: 'boolean', short: 'h' },
       version: { type: 'boolean', short: 'v' },

@@ -105,6 +105,8 @@ async function newContext(browser: Browser, settings: Settings, site: ResolvedSi
       }
       if (!hasHeaders || !sameSite(request.url(), siteHost)) return route.continue().catch(() => undefined);
       const all = await request.allHeaders().catch(() => request.headers());
+      // The client hint would still say "HeadlessChrome" and undo the user agent above.
+      if (all['sec-ch-ua']) all['sec-ch-ua'] = all['sec-ch-ua'].replace(/HeadlessChrome/g, 'Chromium');
       // Never leave a request hanging if the override is rejected: continue it unchanged instead.
       return route.continue({ headers: { ...all, ...headers } }).catch(() => route.continue().catch(() => undefined));
     });
@@ -277,13 +279,13 @@ async function attempt(browser: Browser, site: ResolvedSite, journey: ResolvedJo
       failedStage = stage.name;
       evidence = await captureEvidence(page, dir, consoleErrors, failedRequests, lastStatus);
       blocked = {
-        reason: settings.language === 'el' ? `Δεν έγινε: απέτυχε το «${stage.name}»` : `Not reached: "${stage.name}" failed`,
+        reason: settings.language === 'el' ? `Δεν εκτελέστηκε, γιατί απέτυχε το βήμα «${stage.name}»` : `Not reached: "${stage.name}" failed`,
         status: 'failed',
       };
     } else if (stageNotTested) {
       runtimeNotTested = true;
       blocked = {
-        reason: settings.language === 'el' ? `Δεν έγινε: δεν ελέγχθηκε το «${stage.name}»` : `Not reached: "${stage.name}" could not be tested`,
+        reason: settings.language === 'el' ? `Δεν εκτελέστηκε, γιατί δεν ελέγχθηκε το βήμα «${stage.name}»` : `Not reached: "${stage.name}" could not be tested`,
         status: 'not_tested',
       };
     }

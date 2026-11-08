@@ -2,7 +2,7 @@ import type { Language, RunResult } from '../types.js';
 import { localizeError, STATUS_ICON, statusLabel, t } from '../i18n.js';
 import { escapeHtml, formatDuration } from '../util.js';
 
-export type AlertKind = 'failure' | 'recovery' | 'test' | 'monitor' | 'monitor-recovered';
+export type AlertKind = 'failure' | 'recovery' | 'test' | 'monitor' | 'monitor-recovered' | 'untested';
 
 export interface AlertMessage {
   kind: AlertKind;
@@ -26,13 +26,31 @@ export function buildMessage(
   opts: { downForMs?: number; publicUrl?: string; screenshotPath?: string } = {},
 ): AlertMessage {
   const icon = kind === 'recovery' || kind === 'monitor-recovered' ? '✅' : kind === 'test' ? '🔔' : kind === 'monitor' ? '⚠️' : '❌';
-  const what = (kind === 'recovery' ? t(lang, 'journeyRecovered') : kind === 'test' ? '{journey} test alert' : t(lang, 'journeyFailed')).replace('{journey}', run.journeyName);
+  const what = (kind === 'recovery' ? t(lang, 'journeyRecovered') : t(lang, 'journeyFailed')).replace('{journey}', run.journeyName);
   const title =
     kind === 'monitor'
       ? `${icon} ${t(lang, 'monitorDown')}`
       : kind === 'monitor-recovered'
         ? `${icon} ${t(lang, 'monitorUp')}`
-        : `${icon} ${run.siteName}: ${what}`;
+        : kind === 'test'
+          ? `${icon} JourneyGuard · ${run.siteName}: ${t(lang, 'testAlert')}`
+          : `${icon} ${run.siteName}: ${what}`;
+  if (kind === 'untested') {
+    // The journey has been "not tested" for a long time: say why, so the owner can let the monitor through.
+    const stage = run.stages.find((s) => s.status === 'not_tested' && s.reason) ?? run.stages.find((s) => s.reason);
+    const why = stage ? `${stage.name}: ${localizeError(stage.reason ?? '', lang)}` : '';
+    const hint = run.hints[0];
+    const title2 = `⚠️ ${run.siteName}: ${t(lang, 'untested').replace('{journey}', run.journeyName)}`;
+    const detail = [t(lang, 'untestedDetail'), why, hint ? `${hint.title}: ${hint.detail}` : ''].filter(Boolean).join('\n\n');
+    return {
+      kind,
+      title: title2,
+      text: `${title2}\n${run.siteUrl}\n\n${detail}`,
+      telegramHtml: `<b>${escapeHtml(title2)}</b>\n${escapeHtml(run.siteUrl)}\n\n${escapeHtml(detail)}`,
+      emailHtml: `<!doctype html><html><body style="font-family:system-ui,sans-serif;max-width:640px"><h2 style="color:#b45309">${escapeHtml(title2)}</h2><p><a href="${escapeHtml(run.siteUrl)}">${escapeHtml(run.siteUrl)}</a></p><p>${escapeHtml(detail).replace(/\n/g, '<br>')}</p></body></html>`,
+      run,
+    };
+  }
   if (kind === 'monitor' || kind === 'monitor-recovered') {
     const detail = kind === 'monitor' ? `${t(lang, 'monitorDownDetail')}\n${run.monitorError ?? ''}` : t(lang, 'monitorUpDetail');
     return {
@@ -55,7 +73,7 @@ export function buildMessage(
   const lines = [title, run.siteUrl, '', ...stageLines];
   if (failed) lines.push('', `${t(lang, 'failedAt')}: ${failed.name}`, `${t(lang, 'error')}: ${localizeError(failed.error ?? '', lang)}`);
   if (hint && kind !== 'recovery') lines.push('', `${t(lang, 'likelyCause')}: ${hint.title}`, hint.detail);
-  if (kind === 'recovery' && opts.downForMs) lines.push('', `Downtime: ${formatDuration(opts.downForMs)}`);
+  if (kind === 'recovery' && opts.downForMs) lines.push('', `${t(lang, 'downtime')}: ${formatDuration(opts.downForMs)}`);
   if (link) lines.push('', link);
 
   const tg = [
@@ -66,8 +84,8 @@ export function buildMessage(
   ];
   if (failed) tg.push('', `<b>${escapeHtml(t(lang, 'failedAt'))}:</b> ${escapeHtml(failed.name)}`, `<code>${escapeHtml(localizeError(failed.error ?? '', lang))}</code>`);
   if (hint && kind !== 'recovery') tg.push('', `<b>${escapeHtml(t(lang, 'likelyCause'))}:</b> ${escapeHtml(hint.title)}`, `<i>${escapeHtml(hint.detail)}</i>`);
-  if (kind === 'recovery' && opts.downForMs) tg.push('', `Downtime: ${formatDuration(opts.downForMs)}`);
-  if (link) tg.push('', `<a href="${escapeHtml(link)}">Dashboard</a>`);
+  if (kind === 'recovery' && opts.downForMs) tg.push('', `${escapeHtml(t(lang, 'downtime'))}: ${formatDuration(opts.downForMs)}`);
+  if (link) tg.push('', `<a href="${escapeHtml(link)}">${escapeHtml(t(lang, 'dashboard'))}</a>`);
 
   const color = kind === 'recovery' ? '#15803d' : kind === 'test' ? '#2563eb' : '#b91c1c';
   const emailHtml = `<!doctype html><html><body style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#111;max-width:640px">
@@ -82,7 +100,7 @@ export function buildMessage(
 ${failed ? `<p><b>${escapeHtml(t(lang, 'failedAt'))}:</b> ${escapeHtml(failed.name)}<br><code>${escapeHtml(localizeError(failed.error ?? '', lang))}</code></p>` : ''}
 ${hint && kind !== 'recovery' ? `<p style="background:#fff7ed;border-left:4px solid #f59e0b;padding:10px 12px"><b>${escapeHtml(hint.title)}</b><br>${escapeHtml(hint.detail)}</p>` : ''}
 ${opts.screenshotPath && kind === 'failure' ? '<p><img src="cid:failure-screenshot" alt="Screenshot" style="max-width:100%;border:1px solid #ddd"></p>' : ''}
-${link ? `<p><a href="${escapeHtml(link)}">Open dashboard</a></p>` : ''}
+${link ? `<p><a href="${escapeHtml(link)}">${escapeHtml(t(lang, 'openDashboard'))}</a></p>` : ''}
 <p style="color:#888;font-size:12px">JourneyGuard</p></body></html>`;
 
   return {

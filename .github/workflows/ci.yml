@@ -46,8 +46,13 @@ jobs:
         run: |
           docker run -d --name demo -p 8080:8080 --shm-size=1g journeyguard:ci demo --host 0.0.0.0
           for i in $(seq 1 60); do curl -fsS localhost:8080/healthz >/dev/null 2>&1 && break; sleep 2; done
+          docker logs demo > demo.log 2>&1; cat demo.log
           curl -fsS localhost:8080/healthz
-          docker logs demo
+          # The healthy shop: all three journeys pass. The broken shop: the checkout failure is caught.
+          sed -n '/^1) The shop is healthy/,/^2) Now we break it/p' demo.log > healthy.log
+          sed -n '/^2) Now we break it/,$p' demo.log > broken.log
+          [ "$(grep -c ' PASSED ' healthy.log)" -eq 3 ] || { echo "::error::A journey did not pass on the healthy demo shop"; exit 1; }
+          grep -q 'Shop checkout (WooCommerce)  FAILED' broken.log || { echo "::error::The broken checkout was not caught"; exit 1; }
           docker rm -f demo
       - name: Image size
         run: docker image ls journeyguard:ci --format '{{.Repository}}:{{.Tag}} {{.Size}}' | tee -a "$GITHUB_STEP_SUMMARY"

@@ -6,4 +6,4 @@ In short: be welcoming, be respectful, assume good intent, give and accept const
 
 Maintainers may remove, edit or reject contributions that do not follow this code, and may ban contributors for behaviour they consider inappropriate.
 
-Report unacceptable behaviour privately to the maintainers through the contact form at [nxdpro.com](https://www.nxdpro.com). Reports are handled confidentially.
+Report unacceptable behaviour privately to the maintainers at [info@nxdpro.com](mailto:info@nxdpro.com?subject=JourneyGuard%20conduct). Reports are handled confidentially.

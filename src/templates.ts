@@ -50,7 +50,7 @@ export function starterConfig(
   const notes: string[] = [];
   if (detection) {
     notes.push(`# Detected platform: ${detection.platform}${detection.signals.length ? ` (${detection.signals.join(', ')})` : ''}`);
-    if (detection.cdn) notes.push(`# ${detection.cdn} detected: allow-list the "X-JourneyGuard: 1" header if checks get blocked.`);
+    if (detection.cdn) notes.push(`# ${detection.cdn} detected: if checks get blocked, allow-list this server's IP address, or a secret header set under the site's "headers" (see docs/safety.md).`);
     if (detection.captcha) notes.push(`# ${detection.captcha} detected: forms with a visible CAPTCHA are reported as "not tested".`);
   }
 

@@ -49,10 +49,14 @@ const VALIDATION_MARKERS = [
 const RESPONSE_OUTPUT = '.wpcf7-response-output, .wpforms-error-container, .elementor-message, .gform_validation_errors, .nf-error-msg, .et-pb-contact-message';
 /** Wording of an input error inside a shared error box (matched against plain() text). */
 const VALIDATION_TEXT = /required|invalid|please (?:fill|enter|complete|correct|check|see the errors)|fill in the following|form is invalid|υποχρεωτικ|μη εγκυρ|συμπληρωστε|ελεγξτε τα πεδια/;
+/**
+ * Matched against plain() text (lower case, no accents, ς→σ): a theme that styles the message in
+ * capitals makes the browser drop the accents ("ΕΥΧΑΡΙΣΤΟΥΜΕ, ΤΟ ΜΗΝΥΜΑ ΣΑΣ ΣΤΑΛΘΗΚΕ").
+ */
 const SUCCESS_TEXT =
-  /thank you|thanks for (contacting|your message|getting in touch)|message (was|has been) sent|we('ll| will) (be in touch|get back)|ευχαριστούμε|το μήνυμά σας (στάλθηκε|εστάλη|έχει σταλεί|ελήφθη)|θα επικοινωνήσουμε/gi;
+  /thank you|thanks for (contacting|your message|getting in touch)|message (was|has been) sent|we('ll| will) (be in touch|get back)|ευχαριστουμε|το μηνυμα σασ (σταλθηκε|εσταλη|εχει σταλει|εληφθη)|θα επικοινωνησουμε/g;
 const FAILURE_TEXT =
-  /error (occurred )?(while )?trying to send your message|failed to send|could not be sent|message was not sent|σφάλμα κατά την αποστολή|δεν ήταν δυνατή η αποστολή|το μήνυμα δεν (στάλθηκε|εστάλη)/i;
+  /error (occurred )?(while )?trying to send your message|failed to send|could not be sent|message was not sent|σφαλμα κατα την αποστολη|δεν ηταν δυνατη η αποστολη|το μηνυμα δεν (σταλθηκε|εσταλη)/;
 
 function countMatches(text: string, re: RegExp): number {
   return (text.match(re) ?? []).length;
@@ -63,12 +67,12 @@ function antiBotLine(after: string, before: string): string | undefined {
   if (countMatches(plain(after), ANTI_BOT_TEXT) <= countMatches(plain(before), ANTI_BOT_TEXT)) return undefined;
   const seen = new Set(before.split('\n').map((l) => l.trim()));
   const line = after.split('\n').map((l) => l.trim()).find((l) => !seen.has(l) && countMatches(plain(l), ANTI_BOT_TEXT) > 0);
-  return (line ?? 'anti-spam check').slice(0, 160);
+  return (line ?? 'anti-spam check').replace(/\s+/g, ' ').slice(0, 160);
 }
 
 function antiBotError(line: string): NotTestedError {
   return new NotTestedError(
-    `The form's anti-spam or anti-robot check rejected the test ("${line}"), so nothing was sent. Allow-list the monitor (X-JourneyGuard header or its IP address), or set submit: false. Send one message by hand to make sure real visitors are not blocked too.`,
+    `The form's anti-spam or anti-robot check rejected the test ("${line}"), so nothing was sent. Allow-list the monitor's IP address in the anti-spam settings, or set submit: false. Send one message by hand to make sure real visitors are not blocked too.`,
   );
 }
 
@@ -108,6 +112,8 @@ async function pickForm(ctx: StepContext): Promise<string | undefined> {
       const hasEmail = fields.some((el) => (el.getAttribute('type') || '').toLowerCase() === 'email' || /e-?mail/i.test(el.getAttribute('name') || ''));
       const hasTextarea = fields.some((el) => el.tagName === 'TEXTAREA');
       if ((!hasEmail && !hasTextarea) || (fields.length <= 1 && !hasTextarea)) continue;
+      // A sign-up box is never the contact form, even when the real form is missing.
+      if (!hasTextarea && form.matches(NEWSLETTER)) continue;
       const score =
         fields.length +
         (hasTextarea ? 10 : 0) +
@@ -115,7 +121,7 @@ async function pickForm(ctx: StepContext): Promise<string | undefined> {
         (form.closest('main, article, [role=main], .entry-content') ? 3 : 0) -
         (form.closest('header, footer, nav, aside') ? 5 : 0) -
         (form.matches(NEWSLETTER) ? 8 : 0);
-      if (score > bestScore) {
+      if (score > 0 && score > bestScore) {
         best = form;
         bestScore = score;
       }
@@ -163,6 +169,8 @@ async function autoFill(form: Locator, ctx: StepContext, email: string, message:
       }
       continue;
     }
+    // Sliders and colour pickers already hold a valid value.
+    if (['range', 'color'].includes(a.type)) continue;
     let value = 'JourneyGuard Test';
     if (a.tag === 'textarea') value = message;
     else if (a.type === 'email' || /e-?mail/.test(a.key)) value = email;
@@ -170,9 +178,18 @@ async function autoFill(form: Locator, ctx: StepContext, email: string, message:
     else if (a.type === 'number') value = '1';
     else if (a.type === 'url') value = 'https://example.com';
     else if (a.type === 'date') value = new Date().toISOString().slice(0, 10);
+    else if (a.type === 'time') value = '10:00';
+    else if (a.type === 'datetime-local') value = `${new Date().toISOString().slice(0, 10)}T10:00`;
+    else if (a.type === 'month') value = new Date().toISOString().slice(0, 7);
+    else if (a.type === 'week') value = `${new Date().getFullYear()}-W02`;
     else if (/subject|θέμα/.test(a.key)) value = 'JourneyGuard automated test';
-    await field.fill(value);
-    filled++;
+    try {
+      await field.fill(value);
+      filled++;
+    } catch {
+      // A field with its own picker or format: the form's validation reports it if it matters.
+      ctx.warn(`Could not fill the field "${a.name || a.type}"; set it with the "fields" option if the form needs it`);
+    }
   }
   ctx.info.fieldsFilled = filled;
   return filled;
@@ -199,13 +216,27 @@ export const contactFormPreset: PresetBuilder = (options, { lang }) => {
       const form = findForm(ctx);
       const before = await pageText(ctx);
       const beforeUrl = ctx.page.url();
-      const submit = form.locator('button[type="submit"], input[type="submit"], button:not([type])').first();
+      // Ninja Forms submits through an <input type="button"> inside its submit container.
+      const submit = form.locator('button[type="submit"], input[type="submit"], button:not([type]), .submit-container input[type="button"]').first();
+      // If the test values break the form's own rules (a phone pattern, a required file), the browser
+      // refuses to submit without any message on the page: that is our input, not a mail outage.
+      const nativeInvalid = await form
+        .evaluate((f) => {
+          const el = f as HTMLFormElement;
+          if (el.noValidate) return null;
+          const bad = Array.from(el.elements).find((x) => (x as HTMLInputElement).willValidate && !(x as HTMLInputElement).checkValidity()) as HTMLInputElement | undefined;
+          return bad ? `${bad.name || bad.id || bad.type}: ${bad.validationMessage}` : null;
+        })
+        .catch(() => null);
+      if (nativeInvalid) {
+        throw new NotTestedError(`The form rejected the test input: "${nativeInvalid}". Tell JourneyGuard how to fill the required fields with the "fields" option.`);
+      }
       await safeClick(ctx, submit, 'submit button', ctx.timeoutMs);
 
       const responseText = async (fallback: Locator): Promise<string> => {
         const output = await anyVisible(ctx.page.locator(RESPONSE_OUTPUT));
         const text = (output ? await output.innerText().catch(() => '') : '') || (await fallback.innerText().catch(() => ''));
-        return text.trim().slice(0, 200);
+        return text.replace(/\s+/g, ' ').trim().slice(0, 200);
       };
 
       const deadline = Date.now() + ctx.timeoutMs;
@@ -214,7 +245,7 @@ export const contactFormPreset: PresetBuilder = (options, { lang }) => {
         // status is never mistaken for a mail failure that uses the same wording.
         const text = await pageText(ctx);
         if (await anyVisible(ctx.page.locator(SPAM_MARKERS.join(', ')))) {
-          throw new NotTestedError('The form treated the test message as spam (an anti-spam plugin such as Akismet blocked it). Allow-list the monitor, and check that real messages are not rejected too.');
+          throw new NotTestedError('The form treated the test message as spam (an anti-spam plugin such as Akismet blocked it). Allow-list the IP address of the JourneyGuard server in the plugin, and check that real messages are not rejected too.');
         }
         const invalid = await anyVisible(ctx.page.locator(VALIDATION_MARKERS.join(', ')));
         if (invalid) {
@@ -232,13 +263,15 @@ export const contactFormPreset: PresetBuilder = (options, { lang }) => {
           }
           throw new StepError(`The form could not send the message: ${out || 'submission failed'}`);
         }
-        if (FAILURE_TEXT.test(text) && !FAILURE_TEXT.test(before)) {
-          throw new StepError(`The form could not send the message: ${FAILURE_TEXT.exec(text)?.[0] ?? 'message not sent'}`);
+        const now = plain(text);
+        const was = plain(before);
+        if (FAILURE_TEXT.test(now) && !FAILURE_TEXT.test(was)) {
+          throw new StepError(`The form could not send the message: ${FAILURE_TEXT.exec(now)?.[0] ?? 'message not sent'}`);
         }
-        if (successText && text.includes(successText) && !before.includes(successText)) return;
+        if (successText && now.includes(plain(successText)) && !was.includes(plain(successText))) return;
         if (!successText) {
           if (await anyVisible(ctx.page.locator(SUCCESS_MARKERS.join(', ')))) return;
-          if (countMatches(text, SUCCESS_TEXT) > countMatches(before, SUCCESS_TEXT)) return;
+          if (countMatches(now, SUCCESS_TEXT) > countMatches(was, SUCCESS_TEXT)) return;
           if (ctx.page.url() !== beforeUrl && /thank|success|sent|ευχαριστ/i.test(ctx.page.url())) return;
         }
         await ctx.page.waitForTimeout(300);
@@ -299,7 +332,7 @@ export const contactFormPreset: PresetBuilder = (options, { lang }) => {
               }
               if (interactive) {
                 throw new NotTestedError(
-                  'The form has a CAPTCHA, so robots (including JourneyGuard) cannot submit it. Allow-list the JourneyGuard header or use a test key.',
+                  'The form has a CAPTCHA, so robots (including JourneyGuard) cannot submit it. Set submit: false to check the form without sending, or use a CAPTCHA test key on a staging copy.',
                 );
               }
             },

@@ -2,7 +2,7 @@
 # the stage as "not tested" instead of a false alarm.
 sites:
   - name: My Shopify Store
-    url: https://my-store.myshopify.com
+    url: https://your-store.myshopify.com   # replace with your store
     journeys:
       - preset: website
       - preset: shopify

@@ -64,8 +64,8 @@ const RULES: Rule[] = [
     test: has(/blocked the monitor|bot challenge|verify (that )?you are (a )?human/i),
     title: { en: 'A firewall is blocking the monitor', el: 'Κάποιο firewall μπλοκάρει τον έλεγχο' },
     detail: {
-      en: 'Bot protection (e.g. Cloudflare or a security plugin) stopped JourneyGuard. Allow-list requests with the "X-JourneyGuard" header or the JourneyGuard user agent. Real customers may be affected too if the rules are too strict.',
-      el: 'Η προστασία από bots (π.χ. Cloudflare ή plugin ασφαλείας) σταμάτησε το JourneyGuard. Επιτρέψτε τα αιτήματα με header "X-JourneyGuard" ή user agent JourneyGuard. Αν οι κανόνες είναι πολύ αυστηροί, μπορεί να επηρεάζονται και πραγματικοί πελάτες.',
+      en: 'Bot protection (e.g. Cloudflare or a security plugin) stopped JourneyGuard. Allow-list the IP address of the server JourneyGuard runs on, or a secret header you add for this site under "headers" in journeyguard.yml. Never allow-list the public X-JourneyGuard header or the user agent alone: anyone can send them. If the rules are this strict, check that real customers are not blocked too.',
+      el: 'Η προστασία από bots (π.χ. Cloudflare ή plugin ασφαλείας) σταμάτησε το JourneyGuard. Επιτρέψτε τη διεύθυνση IP του server όπου τρέχει το JourneyGuard, ή ένα μυστικό header που ορίζετε για το site στο «headers» του journeyguard.yml. Μην επιτρέπετε μόνο το δημόσιο header X-JourneyGuard ή το user agent: μπορεί να τα στείλει οποιοσδήποτε. Αφού οι κανόνες είναι τόσο αυστηροί, ελέγξτε ότι δεν μπλοκάρονται και πραγματικοί πελάτες.',
     },
   },
   {
@@ -102,10 +102,10 @@ const RULES: Rule[] = [
     id: 'maintenance',
     severity: 'critical',
     test: has(/maintenance mode|briefly unavailable for scheduled maintenance/i),
-    title: { en: 'Stuck in maintenance mode', el: 'Κολλημένο σε κατάσταση συντήρησης' },
+    title: { en: 'Stuck in maintenance mode', el: 'Η ιστοσελίδα κόλλησε σε κατάσταση συντήρησης' },
     detail: {
       en: 'An interrupted update left WordPress in maintenance mode. Delete the ".maintenance" file in the site root and re-run the update.',
-      el: 'Μια διακοπείσα ενημέρωση άφησε το WordPress σε κατάσταση συντήρησης. Διαγράψτε το αρχείο ".maintenance" στον κεντρικό φάκελο και επαναλάβετε την ενημέρωση.',
+      el: 'Μια ενημέρωση που διακόπηκε άφησε το WordPress σε κατάσταση συντήρησης. Διαγράψτε το αρχείο .maintenance από τον κεντρικό φάκελο της ιστοσελίδας και επαναλάβετε την ενημέρωση.',
     },
   },
   {
@@ -122,17 +122,17 @@ const RULES: Rule[] = [
     id: 'cart-session',
     severity: 'critical',
     test: has(/cart session was lost/),
-    title: { en: 'Customers lose their cart at checkout', el: 'Οι πελάτες χάνουν το καλάθι τους στο checkout' },
+    title: { en: 'Customers lose their cart at checkout', el: 'Οι πελάτες χάνουν το καλάθι τους στο ταμείο' },
     detail: {
       en: 'Cart and checkout pages are probably being cached. Exclude /cart, /checkout and /my-account from page caching and the CDN.',
-      el: 'Πιθανότατα γίνεται caching στις σελίδες καλαθιού και ολοκλήρωσης. Εξαιρέστε τα /cart, /checkout και /my-account από το page cache και το CDN.',
+      el: 'Πιθανότατα γίνεται caching στις σελίδες καλαθιού και ταμείου. Εξαιρέστε τα /cart, /checkout και /my-account από το page cache και το CDN.',
     },
   },
   {
     id: 'add-to-cart',
     severity: 'critical',
     test: has(/cart is still empty|No confirmation that the product was added/),
-    title: { en: '"Add to cart" does not work', el: 'Το "Προσθήκη στο καλάθι" δεν λειτουργεί' },
+    title: { en: '"Add to cart" does not work', el: 'Το κουμπί «Προσθήκη στο καλάθι» δεν λειτουργεί' },
     detail: {
       en: 'Often a JavaScript conflict after a plugin/theme update, a blocked AJAX request, or a stock/price problem with the product.',
       el: 'Συχνά οφείλεται σε σύγκρουση JavaScript μετά από ενημέρωση plugin/θέματος, σε μπλοκαρισμένο AJAX αίτημα ή σε πρόβλημα αποθέματος/τιμής του προϊόντος.',
@@ -206,8 +206,8 @@ const RULES: Rule[] = [
     test: has(/treated the test (message )?as spam|anti-spam or anti-robot check rejected/),
     title: { en: 'Anti-spam blocked the test', el: 'Το anti-spam μπλόκαρε τη δοκιμή' },
     detail: {
-      en: 'Allow-list JourneyGuard in the anti-spam plugin so the check is meaningful, and confirm real messages are not being rejected.',
-      el: 'Επιτρέψτε το JourneyGuard στο plugin anti-spam ώστε ο έλεγχος να έχει νόημα, και βεβαιωθείτε ότι δεν απορρίπτονται πραγματικά μηνύματα.',
+      en: 'Allow-list the IP address of the JourneyGuard server in the anti-spam plugin so the check is meaningful (or use submit: false), and send one message by hand to confirm real messages are not rejected.',
+      el: 'Επιτρέψτε τη διεύθυνση IP του server του JourneyGuard στο plugin anti-spam ώστε ο έλεγχος να έχει νόημα (ή ορίστε submit: false), και στείλτε ένα μήνυμα με το χέρι για να βεβαιωθείτε ότι δεν απορρίπτονται πραγματικά μηνύματα.',
     },
   },
   {
@@ -216,8 +216,8 @@ const RULES: Rule[] = [
     test: has(/has a CAPTCHA/),
     title: { en: 'Form protected by CAPTCHA', el: 'Η φόρμα προστατεύεται με CAPTCHA' },
     detail: {
-      en: 'JourneyGuard does not bypass CAPTCHAs. Use a test site key for the monitor or allow-list its header.',
-      el: 'Το JourneyGuard δεν παρακάμπτει CAPTCHA. Χρησιμοποιήστε test key για τον έλεγχο ή επιτρέψτε το header του.',
+      en: 'JourneyGuard does not bypass CAPTCHAs. Check this form by hand from time to time, use a CAPTCHA test key on a staging copy, or set submit: false to check that the form loads and can be filled in.',
+      el: 'Το JourneyGuard δεν παρακάμπτει CAPTCHA. Ελέγχετε αυτή τη φόρμα με το χέρι κατά διαστήματα, χρησιμοποιήστε test key του CAPTCHA σε δοκιμαστικό αντίγραφο του site, ή ορίστε submit: false για να ελέγχεται ότι η φόρμα φορτώνει και συμπληρώνεται.',
     },
   },
   {
@@ -247,7 +247,7 @@ const RULES: Rule[] = [
     title: { en: 'Safe mode stopped a real purchase', el: 'Η ασφαλής λειτουργία σταμάτησε πραγματική αγορά' },
     detail: {
       en: 'A step tried to press a "place order / pay" button. Remove that step, or run against a store in payment test mode with safeMode: false.',
-      el: 'Ένα βήμα προσπάθησε να πατήσει κουμπί "ολοκλήρωση παραγγελίας / πληρωμή". Αφαιρέστε το βήμα ή τρέξτε σε κατάστημα με test mode πληρωμών και safeMode: false.',
+      el: 'Ένα βήμα προσπάθησε να πατήσει κουμπί «Ολοκλήρωση παραγγελίας» ή «Πληρωμή». Αφαιρέστε το βήμα ή τρέξτε τον έλεγχο σε κατάστημα με πληρωμές σε test mode και safeMode: false.',
     },
   },
   {

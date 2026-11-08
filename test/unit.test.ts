@@ -1,7 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatDuration, interpolateEnv, parseDuration, redact, slugify } from '../src/util.js';
-import { ConfigError, normalizeConfig } from '../src/config.js';
+import { deepInterpolate, formatDuration, interpolateEnv, parseDuration, redact, resolveUrl, siteBase, slugify } from '../src/util.js';
+import { ConfigError, loadConfig, normalizeConfig } from '../src/config.js';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { isDangerousTarget, normalizeLabel, orderRequestReason, type ClickTarget } from '../src/safety.js';
 import { detectFromHtml, findContactPath, hasContactForm, suggestJourneys } from '../src/detect.js';
 import { errorPageLabel } from '../src/presets/common.js';
@@ -162,6 +165,10 @@ test('safe mode recognises order and payment buttons (EN + EL)', () => {
     'Πληρωμή τώρα',
     'ΠΛΗΡΩΜΗ',
     'Πληρώστε 25,00 €',
+    'Proceed to PayPal',
+    'Παραγγελία τώρα',
+    'Αποστολή παραγγελίας',
+    'Συνέχεια στην πληρωμή',
     `Place order · Total €24.90 · By placing your order you agree to our terms and conditions and privacy policy ${'.'.repeat(80)}`,
   ]) {
     assert.ok(isDangerousTarget(target(label)), label);
@@ -173,7 +180,7 @@ test('safe mode recognises order and payment buttons (EN + EL)', () => {
 });
 
 test('safe mode does not refuse harmless controls', () => {
-  for (const label of ['Add to cart', 'Proceed to checkout', 'Προσθήκη στο καλάθι', 'Payment options', 'Pay later with Klarna info', 'Send', 'Apply coupon']) {
+  for (const label of ['Add to cart', 'Proceed to checkout', 'Προσθήκη στο καλάθι', 'Μετάβαση στο ταμείο', 'Συνέχεια αγορών', 'Payment options', 'Pay later with Klarna info', 'Send', 'Apply coupon']) {
     assert.equal(isDangerousTarget(target(label)), undefined, label);
   }
   // Selecting a payment method (a radio or its label) is never an order.
@@ -274,7 +281,7 @@ test('alert messages carry the failed stage and the likely cause', () => {
   assert.doesNotMatch(msg.telegramHtml, /<script/);
   const recovery = buildMessage(fakeRun({ status: 'passed' }), 'recovery', 'el', { downForMs: 600_000 });
   assert.match(recovery.title, /λειτουργεί ξανά/);
-  assert.match(recovery.text, /Downtime: 10m/);
+  assert.match(recovery.text, /Διάρκεια βλάβης: 10m/);
 });
 
 test('Greek reports translate common step errors and keep unknown ones', () => {
@@ -282,4 +289,47 @@ test('Greek reports translate common step errors and keep unknown ones', () => {
   assert.equal(localizeError('Expected payment method is missing: Viva (offered: Αντικαταβολή)', 'el'), 'Λείπει ο τρόπος πληρωμής: Viva (διαθέσιμοι: Αντικαταβολή)');
   assert.equal(localizeError('HTTP 500 on https://shop.gr/', 'en'), 'HTTP 500 on https://shop.gr/');
   assert.equal(localizeError('Something new', 'el'), 'Something new');
+  assert.equal(localizeError('SSL certificate expires in 1 day(s)', 'el'), 'Το πιστοποιητικό SSL λήγει αύριο');
+  assert.equal(localizeError('SSL certificate expired 1 day(s) ago', 'el'), 'Το πιστοποιητικό SSL έληξε πριν από 1 ημέρα');
+  assert.equal(localizeError('The form rejected the test input. Tell JourneyGuard how to fill the required fields with the "fields" option.', 'el'), 'Η φόρμα απέρριψε τα δοκιμαστικά στοιχεία. Ορίστε τι να συμπληρώνεται με την επιλογή «fields».');
+  assert.match(localizeError('Rate limiting blocked the monitor (HTTP 429) on https://x.gr/. Allow-list it.', 'el'), /^Ο περιορισμός αιτημάτων/);
+  assert.match(localizeError('Something on the page covers the add to cart button, so it could not be clicked (<div id="x">). Usually a banner.', 'el'), /κουμπί «Προσθήκη στο καλάθι»/);
+});
+
+test('loadConfig reads secrets from the .env that init writes next to the config', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'jg-env-'));
+  await writeFile(
+    path.join(dir, 'journeyguard.yml'),
+    'alerts:\n  - type: telegram\n    botToken: ${TELEGRAM_BOT_TOKEN}\n    chatId: ${TELEGRAM_CHAT_ID}\nsites:\n  - name: X\n    url: https://example.com\n    journeys:\n      - preset: website\n',
+  );
+  await writeFile(path.join(dir, '.env'), "TELEGRAM_BOT_TOKEN='123:abc'\nTELEGRAM_CHAT_ID=42\nJOURNEYGUARD_PASSWORD='from-dotenv-file'\n");
+  const fromFile = await loadConfig(path.join(dir, 'journeyguard.yml'), {});
+  assert.deepEqual(fromFile.alerts[0], { type: 'telegram', botToken: '123:abc', chatId: '42' });
+  assert.equal(fromFile.settings.dashboard.password, 'from-dotenv-file');
+  // A real environment variable wins over the file.
+  const overridden = await loadConfig(path.join(dir, 'journeyguard.yml'), { TELEGRAM_CHAT_ID: '7' });
+  assert.equal((overridden.alerts[0] as { chatId: string }).chatId, '7');
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('a value that is only a variable keeps its YAML type', () => {
+  const out = deepInterpolate({ enabled: '${ON:-false}', retries: '${R:-2}', chatId: '${CHAT}', note: 'v${R}' }, { R: '3', CHAT: '42' });
+  assert.deepEqual(out, { enabled: false, retries: 3, chatId: '42', note: 'v3' });
+});
+
+test('a shop installed in a folder is checked inside that folder', () => {
+  assert.equal(resolveUrl('https://x.gr/eshop', '/cart/'), 'https://x.gr/eshop/cart/');
+  assert.equal(resolveUrl('https://x.gr/eshop/', '/eshop/checkout/'), 'https://x.gr/eshop/checkout/');
+  assert.equal(resolveUrl('https://x.gr/eshop', '/eshop'), 'https://x.gr/eshop');
+  assert.equal(resolveUrl('https://x.gr', '/cart/'), 'https://x.gr/cart/');
+  assert.equal(resolveUrl('https://x.gr/eshop', 'https://cdn.example/a.js'), 'https://cdn.example/a.js');
+  assert.equal(siteBase('https://x.gr/eshop'), 'https://x.gr/eshop/');
+  assert.equal(siteBase('https://x.gr/index.php'), 'https://x.gr');
+  // A redirect to a language folder is not the shop's folder.
+  assert.equal(siteBase('https://x.gr', 'https://x.gr/el/'), 'https://x.gr');
+});
+
+test('a stray percent sign in a link does not stop detection', () => {
+  assert.equal(findContactPath('<a href="/offers/up-to-50%-off/">Offers</a><a href="/contact/">Contact</a>', 'https://x.gr/'), '/contact/');
+  assert.equal(hasContactForm('<form class="mc4wp-form"><input type="text" name="FNAME"><input type="email" name="EMAIL"></form>'), false);
 });

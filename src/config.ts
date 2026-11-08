@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { parseEnv } from 'node:util';
 import { parse } from 'yaml';
 import type { AlertConfig, Config, JourneyConfig, Settings, SiteConfig, Step } from './types.js';
 import { STEP_ACTIONS } from './types.js';
@@ -282,6 +283,12 @@ export function normalizeConfig(raw: unknown, env: NodeJS.ProcessEnv = process.e
 
 export async function loadConfig(file: string, env: NodeJS.ProcessEnv = process.env, options: LoadOptions = {}): Promise<Config> {
   const abs = path.resolve(file);
+  // Secrets that `journeyguard init` wrote to .env next to the config; real environment variables win.
+  const dotenv = await readFile(path.join(path.dirname(abs), '.env'), 'utf8').then(
+    (text) => parseEnv(text) as NodeJS.ProcessEnv,
+    () => ({}) as NodeJS.ProcessEnv,
+  );
+  env = { ...dotenv, ...env };
   let text: string;
   try {
     text = await readFile(abs, 'utf8');

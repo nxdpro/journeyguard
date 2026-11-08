@@ -34,7 +34,7 @@ const INFO_LABELS: Record<string, [string, string, (v: string | number | boolean
   paymentMethods: ['Payment methods', 'Τρόποι πληρωμής', String],
   gateways: ['Payment providers', 'Πάροχοι πληρωμών', String],
   form: ['Form', 'Φόρμα', String],
-  fieldsFilled: ['Form fields filled', 'Πεδία φόρμας', String],
+  fieldsFilled: ['Form fields filled', 'Συμπληρωμένα πεδία', String],
   sslDaysLeft: ['SSL expires in (days)', 'Λήξη SSL σε (ημέρες)', String],
   sslIssuer: ['SSL issuer', 'Εκδότης SSL', String],
   flaky: ['Passed on retry', 'Πέρασε στη 2η προσπάθεια', () => '✓'],
@@ -57,8 +57,14 @@ function pill(status: StageStatus | 'none', lang: Language): string {
   return `<span class="pill s-${status}">${h(label)}</span>`;
 }
 
+/** A date and time as people in that language write it. */
+function when(iso: string, lang: Language): string {
+  return new Date(iso).toLocaleString(lang === 'el' ? 'el-GR' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
 function timeAgo(iso: string, lang: Language): string {
   const s = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
+  if (s < 5) return t(lang, 'justNow');
   const [n, unit] =
     s < 60 ? [s, lang === 'el' ? 'δευτ.' : 's'] : s < 3600 ? [Math.round(s / 60), lang === 'el' ? 'λεπ.' : 'm'] : s < 86_400 ? [Math.round(s / 3600), lang === 'el' ? 'ώρ.' : 'h'] : [Math.round(s / 86_400), lang === 'el' ? 'ημ.' : 'd'];
   return lang === 'el' ? `πριν ${n} ${unit}` : `${n}${unit} ago`;
@@ -90,7 +96,7 @@ export function renderJourney(v: JourneyView, opts: RenderOptions): string {
   const run = v.latest;
   const status: StageStatus | 'none' = run?.status ?? 'none';
   const head = `<div class="journey-head"><h3>${h(v.journeyName)}</h3>${pill(status, opts.lang)}<span class="spacer"></span>${
-    run ? `<span class="small muted" title="${h(run.startedAt)}">${h(t(opts.lang, 'lastRun'))}: ${h(timeAgo(run.startedAt, opts.lang))} · ${h(formatDuration(run.durationMs))}</span>` : ''
+    run ? `<span class="small muted" title="${h(when(run.startedAt, opts.lang))}">${h(t(opts.lang, 'lastRun'))}: ${h(timeAgo(run.startedAt, opts.lang))} · ${h(formatDuration(run.durationMs))}</span>` : ''
   }${opts.runButton ? `<button class="btn" data-run="${h(v.siteId)}/${h(v.journeyId)}" data-running="${h(t(opts.lang, 'running'))}" data-queued="${h(t(opts.lang, 'queued'))}">${h(t(opts.lang, 'runNow'))}</button>` : ''}</div>`;
 
   if (!run) return `<div class="journey" id="${h(v.siteId)}/${h(v.journeyId)}">${head}<p class="small muted">${h(t(opts.lang, 'noRuns'))}</p></div>`;
@@ -123,7 +129,7 @@ export function renderJourney(v: JourneyView, opts: RenderOptions): string {
     ? `<div class="history" aria-label="${h(t(opts.lang, 'history'))}">${v.history
         .slice(0, 60)
         .reverse()
-        .map((r) => `<span class="${r.status}" title="${h(r.startedAt)} · ${h(r.status)}"></span>`)
+        .map((r) => `<span class="${r.status}" title="${h(when(r.startedAt, opts.lang))} · ${h(statusLabel(opts.lang, r.status))}"></span>`)
         .join('')}</div>`
     : '';
 
@@ -145,10 +151,12 @@ export function renderSites(views: JourneyView[], opts: RenderOptions): string {
 
 export function summaryPills(views: JourneyView[], lang: Language): string {
   const count = (s: string) => views.filter((v) => (v.latest?.status ?? 'none') === s).length;
+  // Greek reads «Αποτυχία: 2» (a count after a singular noun would not agree); English reads "2 Failed".
+  const pillText = (s: 'failed' | 'warning' | 'passed') => (lang === 'el' ? `${statusLabel(lang, s)}: ${count(s)}` : `${count(s)} ${statusLabel(lang, s)}`);
   return [
-    count('failed') ? `<span class="pill s-failed">${count('failed')} ${h(statusLabel(lang, 'failed'))}</span>` : '',
-    count('warning') ? `<span class="pill s-warning">${count('warning')} ${h(statusLabel(lang, 'warning'))}</span>` : '',
-    `<span class="pill s-passed">${count('passed')} ${h(statusLabel(lang, 'passed'))}</span>`,
+    count('failed') ? `<span class="pill s-failed">${h(pillText('failed'))}</span>` : '',
+    count('warning') ? `<span class="pill s-warning">${h(pillText('warning'))}</span>` : '',
+    `<span class="pill s-passed">${h(pillText('passed'))}</span>`,
   ].join('');
 }
 

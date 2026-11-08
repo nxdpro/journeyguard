@@ -52,19 +52,54 @@ export function interpolateEnv(value: string, env: NodeJS.ProcessEnv = process.e
   });
 }
 
-export function deepInterpolate<T>(input: T, env: NodeJS.ProcessEnv = process.env): T {
-  if (typeof input === 'string') return interpolateEnv(input, env) as T;
+/** Settings that are numbers, so `${RETRIES:-1}` becomes 1, not "1". */
+const NUMERIC_KEYS = new Set(['retries', 'keepRuns', 'port', 'sslMinDays', 'width', 'height']);
+const SINGLE_PLACEHOLDER = /^\$\{[A-Z0-9_]+(?::-[^}]*)?\}$/i;
+
+export function deepInterpolate<T>(input: T, env: NodeJS.ProcessEnv = process.env, key?: string): T {
+  if (typeof input === 'string') {
+    const value = interpolateEnv(input, env);
+    // A value that is only a placeholder takes the type it would have had in YAML.
+    if (SINGLE_PLACEHOLDER.test(input.trim())) {
+      if (value === 'true' || value === 'false') return (value === 'true') as T;
+      if (key && NUMERIC_KEYS.has(key) && /^-?\d+$/.test(value)) return Number(value) as T;
+    }
+    return value as T;
+  }
   if (Array.isArray(input)) return input.map((v) => deepInterpolate(v, env)) as T;
   if (input && typeof input === 'object') {
     const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(input)) out[k] = deepInterpolate(v, env);
+    for (const [k, v] of Object.entries(input)) out[k] = deepInterpolate(v, env, k);
     return out as T;
   }
   return input;
 }
 
+/**
+ * The folder a site lives in, from an address a person typed: https://x.gr/eshop → /eshop/,
+ * https://x.gr/eshop/index.php → /eshop/, https://x.gr → /.
+ */
+export function siteFolder(url: string): string {
+  const p = new URL(url).pathname;
+  if (p.endsWith('/')) return p;
+  const last = p.slice(p.lastIndexOf('/') + 1);
+  return last.includes('.') ? p.slice(0, p.lastIndexOf('/') + 1) : `${p}/`;
+}
+
+/** The base address of a site: its origin plus the folder the person typed (never one a redirect added). */
+export function siteBase(typedUrl: string, finalUrl = typedUrl): string {
+  const folder = siteFolder(typedUrl);
+  return folder === '/' ? new URL(finalUrl).origin : new URL(finalUrl).origin + folder;
+}
+
 export function resolveUrl(base: string, target: string): string {
-  return new URL(target, base.endsWith('/') ? base : `${base}/`).toString();
+  const root = new URL(base.endsWith('/') ? base : `${base}/`);
+  const folder = root.pathname;
+  // A site installed in a folder: "/cart/" means https://example.gr/eshop/cart/, not the domain's root.
+  if (target.startsWith('/') && !target.startsWith('//') && folder !== '/' && target !== folder.slice(0, -1) && !target.startsWith(folder)) {
+    return new URL(folder + target.slice(1), root).toString();
+  }
+  return new URL(target, root).toString();
 }
 
 export function originOf(url: string): string {

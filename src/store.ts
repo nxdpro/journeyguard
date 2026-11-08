@@ -11,6 +11,10 @@ export interface JourneyState {
   alerted?: 'failure' | 'recovery';
   /** When the outage that was alerted on started, for the downtime in the recovery message. */
   failingSince?: string;
+  /** Since when every run of this journey has been "not tested" (firewall, CAPTCHA, a banner in the way). */
+  untestedSince?: string;
+  /** Whether the owner was already told that this journey cannot be tested. */
+  untestedAlerted?: boolean;
 }
 
 /**

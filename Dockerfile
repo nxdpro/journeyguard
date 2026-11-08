@@ -1,5 +1,5 @@
 # Build with the full toolchain, ship a slim Debian image with only the headless Chromium shell.
-FROM node:22-bookworm-slim AS build
+FROM node:24-bookworm-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json tsconfig.json ./
 RUN npm ci
@@ -8,7 +8,7 @@ COPY test ./test
 COPY scripts ./scripts
 RUN npm run build && npm prune --omit=dev
 
-FROM node:22-bookworm-slim
+FROM node:24-bookworm-slim
 LABEL org.opencontainers.image.source="https://github.com/nxdpro/journeyguard" \
       org.opencontainers.image.description="Open-source monitoring for checkout, sign-up and contact-form journeys" \
       org.opencontainers.image.licenses="MIT"

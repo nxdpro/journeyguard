@@ -41,19 +41,23 @@ function findDismissible(selectors: string[]): string | null {
     const st = getComputedStyle(el);
     return r.width > 0 && r.height > 0 && st.visibility !== 'hidden' && st.display !== 'none' && st.opacity !== '0';
   };
-  document.querySelectorAll('[data-journeyguard-dismiss]').forEach((el) => el.removeAttribute('data-journeyguard-dismiss'));
+  // Some consent tools (Usercentrics) draw their dialog inside a shadow root.
+  const roots: ParentNode[] = [document];
+  for (const el of Array.from(document.querySelectorAll('*'))) if (el.shadowRoot) roots.push(el.shadowRoot);
+  const all = (sel: string) => roots.flatMap((r) => Array.from(r.querySelectorAll(sel)));
+  all('[data-journeyguard-dismiss]').forEach((el) => el.removeAttribute('data-journeyguard-dismiss'));
   const mark = (el: Element, why: string) => {
     el.setAttribute('data-journeyguard-dismiss', '');
     return why;
   };
   for (const sel of selectors) {
-    const el = Array.from(document.querySelectorAll(sel)).find(visible);
+    const el = all(sel).find(visible);
     if (el) return mark(el, sel);
   }
   const plain = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/ς/g, 'σ').replace(/\s+/g, ' ').trim();
   const REJECT =
-    /^(?:reject(?: all)?(?: cookies)?|decline(?: all)?|deny(?: all)?|refuse(?: all)?|only (?:necessary|essential|required)(?: cookies)?|(?:necessary|essential|required) (?:cookies )?only|use (?:only )?necessary cookies(?: only)?|continue without accepting|απορριψη(?: ολων)?|απορριπτω|μονο (?:τα )?(?:απαραιτητα|αναγκαια|βασικα)(?: cookies)?|συνεχεια χωρισ αποδοχη)$/;
-  const banners = Array.from(document.querySelectorAll('[id*=cookie i], [class*=cookie i], [id*=consent i], [class*=consent i], [id*=gdpr i], [class*=gdpr i], [aria-label*=cookie i]')).filter(visible);
+    /^(?:reject(?: all)?(?: cookies)?|reject non-essential(?: cookies)?|decline(?: all)?|deny(?: all)?|refuse(?: all)?|only (?:necessary|essential|required)(?: cookies)?|(?:necessary|essential|required) (?:cookies )?only|accept (?:only )?(?:necessary|essential)(?: cookies)?(?: only)?|use (?:only )?necessary cookies(?: only)?|continue without accepting|απορριψη(?: ολων| μη απαραιτητων)?(?: cookies)?|απορριπτω|αρνηση(?: ολων)?|μονο (?:τα )?(?:απαραιτητα|αναγκαια|βασικα)(?: cookies)?|αποδοχη (?:μονο )?(?:των )?απαραιτητων|συνεχεια χωρισ αποδοχη)$/;
+  const banners = all('[id*=cookie i], [class*=cookie i], [id*=consent i], [class*=consent i], [id*=gdpr i], [class*=gdpr i], [aria-label*=cookie i]').filter(visible);
   for (const banner of banners) {
     const button = Array.from(banner.querySelectorAll('button, a, [role=button]')).find(
       (b) => visible(b) && REJECT.test(plain((b as HTMLElement).innerText || b.getAttribute('aria-label') || '')),

@@ -16,6 +16,9 @@ export interface EngineEvents {
 
 type Target = { site: ResolvedSite; journey: ResolvedJourney };
 
+/** How long a journey may stay "not tested" before the owner hears about it. */
+const UNTESTED_AFTER_MS = 24 * 60 * 60 * 1000;
+
 /** Runs journeys, stores results, and sends alerts on state changes. */
 export class Engine {
   readonly store: Store;
@@ -65,6 +68,23 @@ export class Engine {
 
   runAll(): Promise<RunResult[]> {
     return this.run(this.sites.flatMap((site) => site.journeys.map((journey) => ({ site, journey }))));
+  }
+
+  /**
+   * Journeys whose interval has passed since their last run, for cron jobs that call `run --due`
+   * every few minutes. A little slack keeps a 15m journey on a 15-minute cron from skipping turns.
+   */
+  async dueTargets(now = Date.now()): Promise<Target[]> {
+    const state = await this.store.readState().catch(() => ({}) as Awaited<ReturnType<Store['readState']>>);
+    return this.sites.flatMap((site) =>
+      site.journeys
+        .filter((journey) => {
+          const last = state[stateKey(site.id, journey.id)]?.lastRunAt;
+          const slack = Math.min(120_000, journey.intervalMs / 10);
+          return !last || Date.parse(last) + journey.intervalMs - slack <= now;
+        })
+        .map((journey) => ({ site, journey })),
+    );
   }
 
   private async runNow(targets: Target[]): Promise<RunResult[]> {
@@ -158,6 +178,8 @@ export class Engine {
       alerted: prev?.alerted,
       // Start of the current outage; kept until it is resolved so downtime is measured correctly.
       failingSince: run.status === 'failed' ? (prev?.failingSince ?? run.startedAt) : prev?.failingSince,
+      untestedSince: run.inconclusive ? (prev?.untestedSince ?? run.startedAt) : undefined,
+      untestedAlerted: run.inconclusive ? prev?.untestedAlerted : undefined,
     };
 
     if (kind && this.options.alert && this.config.alerts.length) {
@@ -170,6 +192,14 @@ export class Engine {
       }
     } else if (!kind && run.status !== 'failed' && !run.inconclusive && prev?.alerted !== 'failure') {
       next.failingSince = undefined;
+    }
+    // "Not tested" never alerts on its own, but forever "not tested" means nobody is watching: say so once.
+    const untestedFor = next.untestedSince ? Date.parse(run.startedAt) - Date.parse(next.untestedSince) : 0;
+    if (run.inconclusive && !next.untestedAlerted && untestedFor >= Math.max(UNTESTED_AFTER_MS, 3 * journey.intervalMs) && this.options.alert && this.config.alerts.length) {
+      const msg = buildMessage(run, 'untested', this.config.settings.language, { publicUrl: this.config.settings.dashboard.publicUrl });
+      const results = await dispatch(this.config.alerts, msg);
+      this.events.onAlert?.(msg.title, results);
+      if (results.some((r) => r.ok)) next.untestedAlerted = true;
     }
     state[key] = next;
     await this.store.writeState(state).catch((e: Error) => {

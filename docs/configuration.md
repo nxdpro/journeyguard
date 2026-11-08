@@ -2,7 +2,9 @@
 
 JourneyGuard reads one YAML file, `journeyguard.yml` by default (override with `--config` or `JOURNEYGUARD_CONFIG`). Create a starter file with `journeyguard init https://your-site.com` and check it with `journeyguard validate`.
 
-Any value can reference an environment variable: `${NAME}` or `${NAME:-default}`. Keep tokens and passwords out of the file this way.
+Commands are written as `journeyguard <command>`. With Docker Compose run `docker compose run --rm journeyguard <command>`; with a Node.js install from the repository run `npm install -g .` once in the clone, or call `node dist/src/bin.js <command>`. `journeyguard --help` lists every command and option.
+
+Values can reference an environment variable: `${NAME}` or `${NAME:-default}`. Keep tokens and passwords out of the file this way. JourneyGuard reads the `.env` file next to `journeyguard.yml` (the one `init` writes) by itself; variables set in the real environment win. A value that is only a variable keeps its type, so `enabled: ${SHOP_CHECK:-false}` is a real `false` and `retries: ${RETRIES:-1}` a number.
 
 ## `settings`
 
@@ -82,7 +84,7 @@ History and alert state are stored per journey under a stable id: the journey's 
 
 Every step has exactly one action. Optional on every step: `name` (label in reports), `timeout` (e.g. `10s`), `optional: true` (a failure becomes a warning).
 
-Selectors are [Playwright selectors](https://playwright.dev/docs/other-locators): CSS, `text=...`, `role=button[name="Buy"]`, etc. Wherever a selector is accepted you may give a **list of fallbacks**; the first that matches is used. This keeps journeys working across theme changes.
+Selectors are [Playwright selectors](https://playwright.dev/docs/other-locators): CSS, `text=...`, `role=button[name="Buy"]`, etc. Wherever a selector is accepted you may give a **list of alternatives**. JourneyGuard uses the first element on the page that matches any of them (page order, not list order), so list alternatives for the same element, for example the classic and the block-theme version of a button. This keeps journeys working across theme changes.
 
 | Step | Example | Passes when |
 |---|---|---|
@@ -102,4 +104,4 @@ Selectors are [Playwright selectors](https://playwright.dev/docs/other-locators)
 
 ## Exit codes
 
-`journeyguard run` exits with `0` when nothing failed, `1` when at least one journey failed, and `2` for configuration or setup errors, so it fits CI pipelines and cron jobs.
+`journeyguard run` and `journeyguard check` exit with `0` when every journey was checked and none failed (warnings and *not tested* stages count as checked), `1` when at least one journey failed, and `2` when the configuration is invalid or a journey could not be checked at all (for example Chromium is missing), so they fit CI pipelines and cron jobs. `run --due` only runs journeys whose `interval` has passed since their last run, which is what a cron job wants.

@@ -1,10 +1,12 @@
 # Alerts
 
-JourneyGuard sends an alert when a journey **breaks** (passing → failing) and when it **recovers** (failing → passing, including how long it was down). Repeated failures do not re-alert, and warnings (slow pages, intermittent failures) only appear on the dashboard. With `retries: 1` (the default) a single network blip never wakes anyone up.
+JourneyGuard sends an alert when a journey **breaks** (passing → failing) and when it **recovers** (failing → passing, including how long it was down). Repeated failures do not re-alert, and warnings (slow pages, intermittent failures) only appear on the dashboard. With `retries: 1` (the default) a single network blip never wakes anyone up (contact forms are never retried, so a check never sends two messages).
 
 - If no channel accepted an alert (for example Telegram was briefly down), it is sent again on the next run, so an outage is never silently missed.
 - A run that could not verify the broken step (a CAPTCHA or firewall challenge appeared) is not reported as a recovery.
-- When the monitor itself fails (the browser crashed, the server ran out of memory) no outage alert is sent; the dashboard shows a *Monitor* warning. After 3 checks in a row cannot run, you get a single "JourneyGuard cannot run checks" alert, and a "checking again" alert once it works.
+- When the monitor itself fails (the browser crashed, the server ran out of memory) no outage alert is sent; the dashboard shows a *Monitor* warning. After 3 checks in a row cannot run, you get a single "JourneyGuard cannot run checks" alert, and a "checking again" alert once it works. This needs the long-running `journeyguard start` (Docker, systemd); with cron, watch the exit code instead (2 = could not check).
+- A journey that stays *not tested* (a firewall, CAPTCHA or banner stops every check) never alerts on each run, but after a day (or three intervals, whichever is longer) you get one "could not be tested for a while" alert with the reason, so nothing goes unwatched without you knowing.
+- Every alert goes to every channel listed; alerts per site are planned for v0.2. An optional `name:` labels a channel in logs and in `test-alerts`.
 - `journeyguard run --no-alerts` ignores the `alerts` section completely, so CI runs do not need the alert secrets.
 
 Test every configured channel with:
@@ -82,6 +84,6 @@ POSTs JSON to any URL, for n8n, Make, Zapier, PagerDuty bridges or your own syst
   url: https://hooks.example.com/journeyguard
 ```
 
-`event` is `failure`, `recovery` or `test`.
+`event` is `failure`, `recovery`, `test`, `untested` (a journey has been *not tested* for a day), `monitor` (JourneyGuard itself cannot run checks) or `monitor-recovered`. Webhooks are not signed: put a secret in the URL (`url: https://hooks.example.com/journeyguard?token=${WEBHOOK_TOKEN}`) and check it on the receiving side.
 
 Set `language: el` to receive alerts in Greek, and `dashboard.publicUrl` to include a link to the dashboard.

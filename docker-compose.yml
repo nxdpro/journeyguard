@@ -4,7 +4,8 @@
 # 3. Check your alert channels: docker compose run --rm journeyguard test-alerts
 services:
   journeyguard:
-    image: ghcr.io/nxdpro/journeyguard:latest
+    # 0.1 receives bug fixes only; read the release notes before moving to the next version (0.2).
+    image: ghcr.io/nxdpro/journeyguard:0.1
     restart: unless-stopped
     ports:
       # Behind a reverse proxy (Caddy, nginx, Traefik) publish on localhost only: "127.0.0.1:8080:8080"

@@ -21,14 +21,14 @@ alerts:
 
 sites:
   - name: Client A – eShop
-    url: https://client-a.gr
+    url: https://client-a.example     # e.g. https://client-a.gr
     journeys:
       - preset: website
       - preset: woocommerce
       - preset: contact-form
         options: { path: /epikoinonia/ }
   - name: Client B – Corporate site
-    url: https://client-b.com.cy
+    url: https://client-b.example     # e.g. https://client-b.com.cy
     journeys:
       - preset: website
         options: { pages: [/services/, /contact/] }

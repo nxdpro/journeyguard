@@ -7,10 +7,10 @@ Presets are ready-made journeys that discover what they need (products, cart and
 | Stage | Checks |
 |---|---|
 | Homepage | Loads with status < 400; no WordPress critical error, database error, maintenance mode, PHP fatal error or gateway error page; records load time; flags first-party scripts/styles that fail to load |
-| Key pages | Each path in `pages` opens without an error page |
+| Key pages | Each path you list in `pages` opens without an error page (none by default) |
 | SSL certificate | Valid for at least `sslMinDays` days; warns under 30 days |
 
-Options: `pages: [/about/, /contact/]`, `ssl: true`, `sslMinDays: 14`.
+Options: `pages` (paths to check, e.g. `[/about/, /contact/]`; default none), `ssl` (default `true`), `sslMinDays` (default `14`).
 
 ## `woocommerce`
 
@@ -63,7 +63,7 @@ Recognised plugins: Contact Form 7, WPForms, Gravity Forms, Elementor Forms, Flu
 
 What is *not* an outage, and is reported as *not tested* with a hint instead:
 
-- anti-spam or anti-robot answers such as Akismet's spam status, *"reCAPTCHA verification failed"* or *"Επιβεβαιώστε ότι δεν είστε ρομπότ"*: allow-list the monitor, and send one message by hand to be sure real visitors get through;
+- anti-spam or anti-robot answers such as Akismet's spam status, *"reCAPTCHA verification failed"* or *"Επιβεβαιώστε ότι δεν είστε ρομπότ"*: allow-list the monitor's IP address in the anti-spam settings (or use `submit: false`), and send one message by hand to be sure real visitors get through;
 - input errors (*"This field is required"*): tell JourneyGuard what to type with `fields`.
 
 Options:
@@ -78,7 +78,7 @@ Options:
 | `fields` | – | Map of `selector: value` to override auto-fill |
 | `successText` | auto | Exact confirmation text to wait for |
 | `captcha` | `skip` | `ignore` to try submitting anyway (only with a test key) |
-| `submit` | `true` | `false` checks that the form is there and can be filled in, without sending a message |
+| `submit` | `true` | `false` checks that the form is there and can be filled in, without sending a message; the journey then follows the site's normal `interval` and `retries` |
 
 The preset runs every **24 hours** by default because each run sends a real message, and it is never retried within a run, so a slow confirmation cannot produce two messages. Override with `interval` and `retries`.
 

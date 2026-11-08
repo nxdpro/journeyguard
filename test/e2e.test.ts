@@ -40,6 +40,23 @@ async function runWith(mode: BreakMode, journeys: JourneyConfig[], extra: Record
   return engine.runAll();
 }
 
+test('run --due skips journeys that ran within their interval', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'jg-due-'));
+  const config = normalizeConfig({
+    settings: { dataDir: dir, timeout: '4s', retries: 0 },
+    sites: [{ name: 'Demo', url: shop.url, journeys: [{ preset: 'website', interval: '15m', options: { ssl: false } }, { preset: 'website', name: 'Daily', interval: '24h', options: { ssl: false } }] }],
+  });
+  shop.setMode('none');
+  const engine = new Engine(config, resolveSites(config), {}, { save: true, alert: false });
+  assert.equal((await engine.dueTargets()).length, 2, 'never run: everything is due');
+  await engine.runAll();
+  assert.equal((await engine.dueTargets()).length, 0, 'just ran: nothing is due');
+  // A cron job firing 14 minutes later still runs the 15-minute journey, never the daily one.
+  const due = await engine.dueTargets(Date.now() + 14 * 60_000);
+  assert.deepEqual(due.map((t) => t.journey.name), ['Website health']);
+  await rm(dir, { recursive: true, force: true });
+});
+
 const stageStatus = (run: RunResult) => Object.fromEntries(run.stages.map((s) => [s.name, s.status]));
 const stageReason = (run: RunResult, name: string) => run.stages.find((s) => s.name === name)?.reason ?? '';
 
@@ -470,6 +487,43 @@ describe('dashboard server, report and webhook alerts', () => {
       assert.deepEqual(received.map((r) => r.event), ['failure', 'recovery']);
       assert.equal(received[0]!.failedStage, 'Payment');
     } finally {
+      hook.close();
+      await rm(alertDir, { recursive: true, force: true });
+    }
+  });
+
+  test('a journey that stays "not tested" for over a day is reported once', async () => {
+    const received: { event: string; title: string }[] = [];
+    const hook = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        received.push(JSON.parse(body));
+        res.end('ok');
+      });
+    });
+    const port = await listen(hook, '127.0.0.1', 0);
+    const alertDir = await mkdtemp(path.join(os.tmpdir(), 'jg-untested-'));
+    try {
+      const config = normalizeConfig({
+        settings: { dataDir: alertDir, timeout: '4s', retries: 0 },
+        alerts: [{ type: 'webhook', url: `http://127.0.0.1:${port}/hook` }],
+        sites: [{ name: 'Demo', url: shop.url, journeys: [{ preset: 'website', options: { ssl: false } }] }],
+      });
+      const engine = new Engine(config, resolveSites(config));
+      shop.setMode('firewall');
+      await engine.runAll(); // blocked, but only for a moment: nothing to report
+      assert.equal(received.length, 0);
+      // Pretend the block started two days ago.
+      const state = await engine.store.readState();
+      for (const k of Object.keys(state)) state[k]!.untestedSince = new Date(Date.now() - 2 * 86_400_000).toISOString();
+      await engine.store.writeState(state);
+      await engine.runAll();
+      await engine.runAll(); // already told: no repeat
+      assert.deepEqual(received.map((r) => r.event), ['untested']);
+      assert.match(received[0]!.title, /could not be tested/);
+    } finally {
+      shop.setMode('none');
       hook.close();
       await rm(alertDir, { recursive: true, force: true });
     }

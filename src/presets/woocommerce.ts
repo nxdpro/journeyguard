@@ -1,7 +1,7 @@
 import type { StepContext } from '../types.js';
 import { gotoUrl, locate, NotTestedError, safeClick, StepError } from '../steps.js';
 import { resolveUrl } from '../util.js';
-import { detectGateways, hrefOf, noFatalErrors, pageText, plain, pollJson, recordLoadTime } from './common.js';
+import { detectGateways, GATEWAY_SIGNATURES, hrefOf, noFatalErrors, pageText, plain, pollJson, recordLoadTime } from './common.js';
 import { label, optBool, optStr, optStrings, type PresetBuilder } from './options.js';
 
 interface StoreProduct {
@@ -56,12 +56,17 @@ async function findProductUrl(ctx: StepContext, shopPath: string): Promise<strin
         buyable.find((p) => p.type === 'simple' && paid(p)) ??
         buyable.find((p) => p.type === 'variable' && paid(p)) ??
         buyable.find((p) => p.type === 'simple') ??
-        buyable.find((p) => p.type === 'variable');
+        buyable.find((p) => p.type === 'variable') ??
+        // Subscriptions, bundles, bookings…: their pages use the same add-to-cart button.
+        buyable.find((p) => p.type !== 'external' && p.type !== 'grouped');
       if (pick) {
         ctx.info.product = pick.name;
         return pick.permalink;
       }
-      if (list.length > 0) throw new StepError('No product is in stock and purchasable');
+      if (list.length > 0 && !buyable.length) throw new StepError('No product is in stock and purchasable');
+      if (list.length > 0) {
+        throw new NotTestedError('No product can be added to the cart directly (only external or grouped products). Set productUrl to a product customers buy here.');
+      }
     }
   }
   // 2) Fall back to the shop page and the first product link.
@@ -304,7 +309,16 @@ export const woocommercePreset: PresetBuilder = (options, { lang }) => {
                   const gateways = await detectGateways(ctx);
                   if (gateways.length) ctx.info.gateways = gateways.join(', ');
                   if (expectPayments.length) {
-                    const offered = plain(`${labels.join(' ')} ${gateways.join(' ')}`);
+                    // Only methods a customer can pick count: a leftover Stripe script or a "We accept
+                    // PayPal" logo in the footer must not hide a gateway that has gone.
+                    const ids = await ctx.page
+                      .locator('#payment li.wc_payment_method input[name="payment_method"], .wc-block-checkout__payment-method input[type=radio]')
+                      .evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value))
+                      .catch(() => [] as string[]);
+                    const single = await ctx.page.locator('.wc-block-checkout__payment-method .wc-block-components-payment-method-label').allInnerTexts().catch(() => [] as string[]);
+                    const idText = ids.map((id) => `payment_method_${id}`).join('\n');
+                    const fromIds = GATEWAY_SIGNATURES.filter((g) => g.pattern.test(idText)).map((g) => g.name);
+                    const offered = plain(`${labels.join(' ')} ${single.join(' ')} ${ids.join(' ')} ${fromIds.join(' ')}`);
                     const missing = expectPayments.filter((m) => !offered.includes(plain(m)));
                     if (missing.length) {
                       throw new StepError(
